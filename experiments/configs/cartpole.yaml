@@ -1,0 +1,68 @@
+# ─── Cart-Pole (Inverted Pendulum) — Experiment Configuration ────────────────
+system:
+  name: CartPole
+  M: 1.0          # cart mass (kg)
+  m: 0.1          # pole mass (kg)
+  l: 0.5          # half-pole length (m)
+  g: 9.81         # gravity (m/s²)
+
+dataset:
+  n_trajectories: 100
+  t_end: 5.0
+  dt: 0.02
+  noise_std: 0.02
+  control_mode: random
+  val_fraction: 0.15
+  test_fraction: 0.10
+  seed: 1
+
+model:
+  hidden_dims: [128, 128, 64]
+  activation: tanh
+  use_residual: true
+  use_fourier_features: false
+  dropout: 0.0
+  output_scaling: true
+
+training:
+  adam_epochs: 8000
+  adam_lr: 8.0e-4
+  adam_lr_decay_step: 2000
+  adam_lr_decay_gamma: 0.5
+  adam_weight_decay: 1.0e-5
+  batch_size: 1024
+  lbfgs_epochs: 400
+  lbfgs_lr: 0.1
+  n_collocation: 3000
+  lambda_data: 1.0
+  lambda_phys: 0.1
+  adaptive_weights: true
+  seed: 1
+  device: cpu
+  patience: 1000
+
+mpc:
+  horizon: 15
+  dt: 0.02
+  integration: rk4
+  Q: [1.0, 0.1, 10.0, 1.0]   # penalise pole angle most
+  R: [0.01]
+  P_scale: 10.0
+  u_min: [-10.0]
+  u_max: [10.0]
+  warm_start: true
+  max_iter: 200
+
+closed_loop:
+  n_steps: 300
+  x0: [0.0, 0.0, 0.15, 0.0]  # small angle perturbation
+  x_ref: [0.0, 0.0, 0.0, 0.0]
+  noise_std: 0.01
+
+pid:
+  Kp: 50.0
+  Ki: 5.0
+  Kd: 10.0
+  state_idx: 2              # control based on pole angle
+
+output_dir: results/cartpole

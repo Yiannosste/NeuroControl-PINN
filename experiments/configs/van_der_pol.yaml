@@ -1,0 +1,59 @@
+# ─── Van der Pol Oscillator — Experiment Configuration ───────────────────────
+system:
+  name: VanDerPol
+  mu: 1.0                     # nonlinearity parameter
+
+dataset:
+  n_trajectories: 60
+  t_end: 12.0
+  dt: 0.05
+  noise_std: 0.05
+  control_mode: random
+  val_fraction: 0.15
+  test_fraction: 0.10
+  seed: 42
+
+model:
+  hidden_dims: [64, 64, 64]
+  activation: tanh
+  use_residual: true
+  use_fourier_features: false
+  dropout: 0.0
+  output_scaling: true
+
+training:
+  adam_epochs: 6000
+  adam_lr: 1.0e-3
+  adam_lr_decay_step: 1500
+  adam_lr_decay_gamma: 0.5
+  adam_weight_decay: 1.0e-5
+  batch_size: 512
+  lbfgs_epochs: 300
+  lbfgs_lr: 0.1
+  n_collocation: 2000
+  lambda_data: 1.0
+  lambda_phys: 0.05
+  adaptive_weights: true
+  seed: 0
+  device: cpu
+  patience: 800
+
+mpc:
+  horizon: 20
+  dt: 0.05
+  integration: rk4
+  Q: [1.0, 0.5]               # diagonal of Q matrix
+  R: [0.01]                   # diagonal of R matrix
+  P_scale: 10.0               # P = P_scale * Q
+  u_min: [-5.0]
+  u_max: [5.0]
+  warm_start: true
+  max_iter: 150
+
+closed_loop:
+  n_steps: 200
+  x0: [2.0, 0.0]
+  x_ref: [0.0, 0.0]
+  noise_std: 0.02
+
+output_dir: results/van_der_pol

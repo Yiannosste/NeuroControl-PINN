@@ -1,0 +1,58 @@
+# ─── CSTR Reactor — Experiment Configuration ──────────────────────────────────
+system:
+  name: CSTR
+
+dataset:
+  n_trajectories: 120
+  t_end: 30.0
+  dt: 0.1
+  noise_std: 0.01
+  control_mode: random
+  val_fraction: 0.15
+  test_fraction: 0.10
+  seed: 7
+
+model:
+  hidden_dims: [64, 64, 64]
+  activation: tanh
+  use_residual: true
+  use_fourier_features: false
+  dropout: 0.0
+  output_scaling: true
+
+training:
+  adam_epochs: 6000
+  adam_lr: 1.0e-3
+  adam_lr_decay_step: 1500
+  adam_lr_decay_gamma: 0.5
+  adam_weight_decay: 1.0e-5
+  batch_size: 1024
+  lbfgs_epochs: 300
+  lbfgs_lr: 0.1
+  n_collocation: 2000
+  lambda_data: 1.0
+  lambda_phys: 0.0          # no explicit physics loss for CSTR (full black-box mode)
+  adaptive_weights: false
+  seed: 7
+  device: cpu
+  patience: 800
+
+mpc:
+  horizon: 20
+  dt: 0.5
+  integration: rk4
+  Q: [100.0, 0.01]          # penalise CA deviation most
+  R: [0.001]
+  P_scale: 10.0
+  u_min: [250.0]
+  u_max: [350.0]
+  warm_start: true
+  max_iter: 200
+
+closed_loop:
+  n_steps: 120
+  x0: [0.8, 325.0]          # start at low-conversion steady state
+  x_ref: [0.1020, 401.3]    # drive to high-conversion steady state
+  noise_std: 0.005
+
+output_dir: results/cstr
