@@ -139,8 +139,8 @@ NeuroControl-PINN/
 ### Installation
 
 ```bash
-git clone https://github.com/Yiannosste/SciML.git
-cd SciML
+git clone https://github.com/Yiannosste/NeuroControl-PINN.git
+cd NeuroControl-PINN
 pip install -r requirements.txt
 ```
 
