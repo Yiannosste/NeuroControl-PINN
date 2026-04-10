@@ -56,4 +56,13 @@ closed_loop:
   x_ref: [0.0, 0.0]
   noise_std: 0.02
 
+pid:
+  # Gains tuned for the Van der Pol oscillator (μ=1, u_max=5).
+  # Controls x₁ (position) toward the origin; Kd provides damping
+  # against the limit-cycle velocity component.
+  Kp: 8.0
+  Ki: 0.5
+  Kd: 3.0
+  state_idx: 0   # regulate x₁
+
 output_dir: results/van_der_pol

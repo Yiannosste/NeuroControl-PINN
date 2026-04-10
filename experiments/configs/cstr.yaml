@@ -55,4 +55,14 @@ closed_loop:
   x_ref: [0.1020, 401.3]    # drive to high-conversion steady state
   noise_std: 0.005
 
+pid:
+  # Gains tuned for the CSTR coolant-temperature loop.
+  # Controls CA (state_idx=0) by adjusting coolant flow.
+  # Tight Kp and small Ki avoid integrator wind-up during the
+  # large set-point change from 0.8 → 0.102 mol/L.
+  Kp: 5.0
+  Ki: 0.2
+  Kd: 1.0
+  state_idx: 0   # regulate CA
+
 output_dir: results/cstr

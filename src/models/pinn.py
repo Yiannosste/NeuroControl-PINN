@@ -31,6 +31,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 import numpy as np
+from numpy.typing import NDArray
 
 
 @dataclass
@@ -162,7 +163,7 @@ class PINN(nn.Module):
 
         self._init_weights()
 
-    def _init_weights(self):
+    def _init_weights(self) -> None:
         """Xavier initialization for stable PINN training."""
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -170,7 +171,7 @@ class PINN(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
-    def forward(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, u: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
         """
         Predict dx/dt given state x and control u.
 
@@ -200,27 +201,35 @@ class PINN(nn.Module):
 
         return out
 
-    def predict_numpy(self, x: np.ndarray, u: np.ndarray) -> np.ndarray:
+    def predict_numpy(
+        self, x: NDArray[np.float32], u: NDArray[np.float32]
+    ) -> NDArray[np.float32]:
         """
         Predict dx/dt from numpy arrays (for use in scipy MPC).
+
+        The model may reside on any device (CPU or GPU); this method
+        always returns a CPU NumPy array regardless.
 
         Args:
             x: State array of shape (state_dim,) or (N, state_dim).
             u: Control array of shape (control_dim,) or (N, control_dim).
 
         Returns:
-            dxdt: Numpy array of shape matching input.
+            dxdt: NumPy array of shape matching input.
         """
         squeezed = x.ndim == 1
         if squeezed:
             x = x[np.newaxis, :]
             u = u[np.newaxis, :]
 
-        x_t = torch.FloatTensor(x)
-        u_t = torch.FloatTensor(u)
+        device = next(self.parameters()).device
+        x_t = torch.as_tensor(x, dtype=torch.float32, device=device)
+        u_t = torch.as_tensor(u, dtype=torch.float32, device=device)
 
         with torch.no_grad():
-            out = self.forward(x_t, u_t).numpy()
+            out: NDArray[np.float32] = (
+                self.forward(x_t, u_t).detach().cpu().numpy()
+            )
 
         return out[0] if squeezed else out
 
@@ -263,7 +272,7 @@ class PINN(nn.Module):
         u_seq: torch.Tensor,
         dt: float,
         method: str = "rk4",
-    ) -> torch.Tensor:
+    ) -> torch.Tensor:  # (N+1, state_dim) or (batch, N+1, state_dim)
         """
         Integrate the PINN dynamics over a control sequence.
 
@@ -296,7 +305,7 @@ class PINN(nn.Module):
 
         return torch.stack(traj, dim=-2)  # (..., N+1, state_dim)
 
-    def save(self, path: str):
+    def save(self, path: str) -> None:
         """Save model weights and config."""
         torch.save({"state_dict": self.state_dict(), "config": self.config}, path)
 

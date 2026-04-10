@@ -111,15 +111,20 @@ def main():
 
     # ── 3. PID ────────────────────────────────────────────────────────────────
     if not args.skip_pid:
-        pid_cfg = cfg.get("pid", {})
+        if "pid" not in cfg:
+            raise KeyError(
+                f"'pid' section missing from config '{args.config or config_map[args.system]}'. "
+                "Add Kp, Ki, Kd, and state_idx entries or pass --skip-pid."
+            )
+        pid_cfg = cfg["pid"]
         pid = PIDController(
-            Kp=pid_cfg.get("Kp", 10.0),
-            Ki=pid_cfg.get("Ki", 1.0),
-            Kd=pid_cfg.get("Kd", 2.0),
+            Kp=float(pid_cfg["Kp"]),
+            Ki=float(pid_cfg["Ki"]),
+            Kd=float(pid_cfg["Kd"]),
             dt=mpc_cfg.dt,
             u_min=float(mpc_cfg.u_min[0]) if mpc_cfg.u_min is not None else None,
             u_max=float(mpc_cfg.u_max[0]) if mpc_cfg.u_max is not None else None,
-            state_idx=pid_cfg.get("state_idx", 0),
+            state_idx=int(pid_cfg.get("state_idx", 0)),
         )
         x_ref_traj = np.tile(x_ref, (n_steps, 1))
         print("\n[3/3] PID...")

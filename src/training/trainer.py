@@ -16,12 +16,11 @@ Reference:
 """
 
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Optional, Callable
+from dataclasses import dataclass
+from typing import Optional
 import time
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -66,8 +65,11 @@ class PINNTrainer:
 
     Usage:
         trainer = PINNTrainer(model, loss_fn, config)
-        history = trainer.fit(x_train, u_train, dxdt_train,
-                              x_bounds=system.state_bounds)
+        history = trainer.fit(
+            x_train, u_train, dxdt_train,
+            x_bounds=system.state_bounds,
+            u_bounds=system.control_bounds,   # empirical control bounds
+        )
     """
 
     def __init__(
@@ -75,7 +77,7 @@ class PINNTrainer:
         model: PINN,
         loss_fn: PINNLoss,
         config: TrainingConfig,
-    ):
+    ) -> None:
         self.model = model
         self.loss_fn = loss_fn
         self.config = config
@@ -106,21 +108,36 @@ class PINNTrainer:
         return TensorDataset(X, U, D)
 
     def _sample_collocation(
-        self, x_bounds: tuple[np.ndarray, np.ndarray]
+        self,
+        x_bounds: tuple[np.ndarray, np.ndarray],
+        u_bounds: tuple[np.ndarray, np.ndarray],
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Sample random collocation points uniformly in state-control space.
-        These points are used for the physics residual loss.
+
+        Control inputs are sampled within the empirical bounds derived from
+        the training dataset (normalised space), ensuring the physics loss
+        is enforced across the full operational envelope rather than a
+        hardcoded [-1, 1] interval.
+
+        Args:
+            x_bounds: (x_min, x_max) arrays of shape (state_dim,).
+            u_bounds: (u_min, u_max) arrays of shape (control_dim,).
+
+        Returns:
+            (x_col, u_col) tensors on self.device.
         """
         x_min, x_max = x_bounds
+        u_min, u_max = u_bounds
         n = self.config.n_collocation
         n_state = len(x_min)
+        n_ctrl = len(u_min)
 
         x_col = np.random.uniform(
             x_min, x_max, size=(n, n_state)
         ).astype(np.float32)
         u_col = np.random.uniform(
-            -1.0, 1.0, size=(n, self.model.control_dim)
+            u_min, u_max, size=(n, n_ctrl)
         ).astype(np.float32)
 
         return (
@@ -137,6 +154,7 @@ class PINNTrainer:
         u_val: Optional[np.ndarray] = None,
         dxdt_val: Optional[np.ndarray] = None,
         x_bounds: Optional[tuple] = None,
+        u_bounds: Optional[tuple] = None,
     ) -> dict:
         """
         Train the PINN on trajectory data.
@@ -146,7 +164,12 @@ class PINNTrainer:
             u_train: Controls (N, control_dim).
             dxdt_train: State derivatives (N, state_dim).
             x_val, u_val, dxdt_val: Optional validation data.
-            x_bounds: (x_min, x_max) for collocation sampling.
+            x_bounds: (x_min, x_max) for state collocation sampling.
+                      Defaults to empirical min/max of x_train.
+            u_bounds: (u_min, u_max) for control collocation sampling.
+                      Defaults to empirical min/max of u_train.  Pass the
+                      system's control_bounds for normalised datasets so
+                      the physics loss covers the full operational envelope.
 
         Returns:
             Training history dict.
@@ -170,10 +193,19 @@ class PINNTrainer:
                 torch.FloatTensor(arr) for arr in [x_val, u_val, dxdt_val]
             ]))
 
+        # Compute state bounds from data if not provided.
         if x_bounds is None:
             x_min = x_train.min(axis=0)
             x_max = x_train.max(axis=0)
             x_bounds = (x_min, x_max)
+
+        # Compute control bounds from data if not provided.
+        # Using the empirical dataset range ensures collocation covers
+        # every operating condition seen during data collection.
+        if u_bounds is None:
+            u_min = u_train.min(axis=0)
+            u_max = u_train.max(axis=0)
+            u_bounds = (u_min, u_max)
 
         print("=" * 60)
         print(f"  PINN Training — {self.model}")
@@ -182,17 +214,17 @@ class PINNTrainer:
         print("=" * 60)
 
         # ── Phase 1: Adam ────────────────────────────────────────────
-        self._train_adam(loader, val_tensors, x_bounds)
+        self._train_adam(loader, val_tensors, x_bounds, u_bounds)
 
         # ── Phase 2: L-BFGS ──────────────────────────────────────────
         x_all = torch.FloatTensor(x_train).to(self.device)
         u_all = torch.FloatTensor(u_train).to(self.device)
         d_all = torch.FloatTensor(dxdt_train).to(self.device)
-        self._train_lbfgs(x_all, u_all, d_all, x_bounds)
+        self._train_lbfgs(x_all, u_all, d_all, x_bounds, u_bounds)
 
         return self.history
 
-    def _train_adam(self, loader, val_tensors, x_bounds):
+    def _train_adam(self, loader, val_tensors, x_bounds, u_bounds):
         cfg = self.config
         opt = optim.Adam(
             self.model.parameters(),
@@ -212,12 +244,12 @@ class PINNTrainer:
             epoch_losses = {"total": 0.0, "data": 0.0, "physics": 0.0}
             n_batches = 0
 
-            # Re-sample collocation points each epoch
+            # Re-sample collocation points each epoch (or once if disabled).
             if cfg.collocation_resample:
-                x_col, u_col = self._sample_collocation(x_bounds)
+                x_col, u_col = self._sample_collocation(x_bounds, u_bounds)
             else:
                 if epoch == 0:
-                    x_col, u_col = self._sample_collocation(x_bounds)
+                    x_col, u_col = self._sample_collocation(x_bounds, u_bounds)
 
             for x_b, u_b, d_b in loader:
                 x_b, u_b, d_b = self._to_device(x_b, u_b, d_b)
@@ -276,10 +308,24 @@ class PINNTrainer:
         self._load_best()
         print(f"  Adam done. Best loss: {best_loss:.4e}")
 
-    def _train_lbfgs(self, x_all, u_all, d_all, x_bounds):
-        cfg = self.config
-        x_col, u_col = self._sample_collocation(x_bounds)
+    def _train_lbfgs(self, x_all, u_all, d_all, x_bounds, u_bounds):
+        """
+        L-BFGS fine-tuning phase.
 
+        Collocation points are resampled once per epoch (i.e. once per
+        call to opt.step) rather than once per closure invocation.
+        L-BFGS performs multiple closure evaluations per step during its
+        line-search; resampling inside the closure would make the
+        objective stochastic within a single step, breaking the Wolfe
+        conditions and causing divergence.  Resampling per epoch
+        preserves a consistent objective within each step while still
+        preventing overfitting to a fixed collocation set.
+
+        When collocation_resample=False the points are fixed for the
+        entire L-BFGS phase (original behaviour; useful for memory-
+        constrained environments or deterministic reproducibility).
+        """
+        cfg = self.config
         opt = optim.LBFGS(
             self.model.parameters(),
             lr=cfg.lbfgs_lr,
@@ -290,16 +336,26 @@ class PINNTrainer:
             line_search_fn="strong_wolfe",
         )
 
+        # Sample the initial collocation set used when resampling is disabled.
+        x_col, u_col = self._sample_collocation(x_bounds, u_bounds)
+
         best_loss = float("inf")
         t0 = time.time()
 
         for epoch in range(cfg.lbfgs_epochs):
             self.model.train()
 
-            def closure():
+            # Resample at the start of each epoch so the closure is
+            # consistent throughout the entire line-search for this step.
+            if cfg.collocation_resample and epoch > 0:
+                x_col, u_col = self._sample_collocation(x_bounds, u_bounds)
+
+            # Capture the epoch-local collocation tensors in the closure
+            # via default arguments to avoid late-binding issues.
+            def closure(xc=x_col, uc=u_col):
                 opt.zero_grad()
                 dxdt_pred = self.model(x_all, u_all)
-                losses = self.loss_fn(self.model, dxdt_pred, d_all, x_col, u_col)
+                losses = self.loss_fn(self.model, dxdt_pred, d_all, xc, uc)
                 losses["total"].backward()
                 return losses["total"]
 

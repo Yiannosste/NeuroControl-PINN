@@ -32,6 +32,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 import time
+import warnings
 import numpy as np
 import torch
 from scipy.optimize import minimize, Bounds, LinearConstraint
@@ -61,6 +62,7 @@ class MPCConfig:
     max_iter: int = 200
     tol: float = 1e-6
     warm_start: bool = True        # warm-start from previous solution
+    grad_eps: float = 1e-5         # finite-difference epsilon (used by ClassicalMPC)
 
 
 class PINNMPC:
@@ -69,6 +71,11 @@ class PINNMPC:
 
     The cost function and gradients are computed using PyTorch autograd,
     which enables efficient gradient-based optimisation.
+
+    Device handling: the controller operates entirely on whichever device
+    the loaded PINN model resides on.  Cost matrices, reference tensors, and
+    all intermediate computations are kept on that device; gradients are only
+    transferred to CPU (as float64 NumPy arrays) when SciPy needs them.
     """
 
     def __init__(
@@ -76,7 +83,7 @@ class PINNMPC:
         model: PINN,
         config: MPCConfig,
         x_ref: Optional[np.ndarray] = None,
-    ):
+    ) -> None:
         """
         Args:
             model: Trained PINN dynamics model.
@@ -86,25 +93,29 @@ class PINNMPC:
         self.model = model
         self.model.eval()
         self.config = config
-        self.state_dim = model.state_dim
-        self.control_dim = model.control_dim
+        self.state_dim: int = model.state_dim
+        self.control_dim: int = model.control_dim
+
+        # Infer device from model parameters — works for CPU and any CUDA device.
+        self._device: torch.device = next(model.parameters()).device
 
         # Reference state
-        if x_ref is None:
-            self.x_ref = np.zeros(self.state_dim)
-        else:
-            self.x_ref = np.array(x_ref)
+        self.x_ref: np.ndarray = (
+            np.zeros(self.state_dim) if x_ref is None else np.array(x_ref, dtype=np.float64)
+        )
 
-        # Cost matrices
+        # Cost matrices — constructed once and kept on the target device.
         cfg = config
         Q = cfg.Q if cfg.Q is not None else np.eye(self.state_dim)
         R = cfg.R if cfg.R is not None else 0.01 * np.eye(self.control_dim)
         P = cfg.P if cfg.P is not None else 10.0 * Q
 
-        self.Q = torch.FloatTensor(Q)
-        self.R = torch.FloatTensor(R)
-        self.P = torch.FloatTensor(P)
-        self.x_ref_t = torch.FloatTensor(self.x_ref)
+        self.Q: torch.Tensor = torch.as_tensor(Q, dtype=torch.float32, device=self._device)
+        self.R: torch.Tensor = torch.as_tensor(R, dtype=torch.float32, device=self._device)
+        self.P: torch.Tensor = torch.as_tensor(P, dtype=torch.float32, device=self._device)
+        self.x_ref_t: torch.Tensor = torch.as_tensor(
+            self.x_ref, dtype=torch.float32, device=self._device
+        )
 
         # Decision variable bounds: u_seq flattened (N * control_dim,)
         N, m = config.horizon, self.control_dim
@@ -118,14 +129,23 @@ class PINNMPC:
         # Warm-start initial guess
         self._u_prev: Optional[np.ndarray] = None
 
+        # ── Persistent device buffers (avoids per-call tensor allocation) ──────
+        # These are no-grad storage tensors updated in-place on every solver call.
+        self._u_buf: torch.Tensor = torch.zeros(N, m, dtype=torch.float32, device=self._device)
+        self._x0_buf: torch.Tensor = torch.zeros(
+            self.state_dim, dtype=torch.float32, device=self._device
+        )
+
         # Performance counters
         self.solve_times: list[float] = []
         self.n_iterations: list[int] = []
 
-    def set_reference(self, x_ref: np.ndarray):
+    def set_reference(self, x_ref: np.ndarray) -> None:
         """Update the reference state."""
-        self.x_ref = np.array(x_ref)
-        self.x_ref_t = torch.FloatTensor(self.x_ref)
+        self.x_ref = np.array(x_ref, dtype=np.float64)
+        self.x_ref_t = torch.as_tensor(
+            self.x_ref, dtype=torch.float32, device=self._device
+        )
 
     def _rollout_torch(
         self, x0: torch.Tensor, u_seq: torch.Tensor
@@ -134,11 +154,11 @@ class PINNMPC:
         Propagate state using the PINN over the horizon.
 
         Args:
-            x0: Initial state (state_dim,).
-            u_seq: Control sequence (N, control_dim).
+            x0: Initial state (state_dim,) on self._device.
+            u_seq: Control sequence (N, control_dim) on self._device.
 
         Returns:
-            Trajectory (N+1, state_dim).
+            Trajectory tensor (N+1, state_dim) on self._device.
         """
         N = self.config.horizon
         dt = self.config.dt
@@ -146,8 +166,8 @@ class PINNMPC:
         x = x0
 
         for k in range(N):
-            u_k = u_seq[k].unsqueeze(0)  # (1, control_dim)
-            x_batch = x.unsqueeze(0)     # (1, state_dim)
+            u_k = u_seq[k].unsqueeze(0)   # (1, control_dim)
+            x_batch = x.unsqueeze(0)       # (1, state_dim)
 
             if self.config.integration == "euler":
                 dxdt = self.model(x_batch, u_k).squeeze(0)
@@ -167,35 +187,54 @@ class PINNMPC:
         self, u_flat: np.ndarray, x0: np.ndarray
     ) -> tuple[float, np.ndarray]:
         """
-        Compute MPC cost and gradient wrt the flattened control sequence.
+        Compute MPC cost and gradient w.r.t. the flattened control sequence.
+
+        Uses pre-allocated device buffers so that no new tensor objects are
+        created on the heap per call.  Only the final scalar and gradient
+        are transferred back to CPU as NumPy arrays.
 
         Args:
-            u_flat: Flattened control sequence (N * control_dim,).
-            x0: Current state (state_dim,).
+            u_flat: Flattened control sequence (N * control_dim,), float64 NumPy.
+            x0: Current state (state_dim,), float64 NumPy.
 
         Returns:
-            (cost, gradient) pair for scipy.optimize.minimize.
+            (cost, gradient) pair consumed by scipy.optimize.minimize.
         """
         N, m = self.config.horizon, self.control_dim
 
-        u_t = torch.FloatTensor(u_flat.astype(np.float32).reshape(N, m)).requires_grad_(True)
-        x0_t = torch.FloatTensor(x0.astype(np.float32))
+        # ── Update persistent device buffers in-place ────────────────────────
+        # Avoids per-call Python-object allocation.  casting='unsafe' converts
+        # float64 → float32 without a copy when dtypes already match.
+        self._u_buf.copy_(
+            torch.from_numpy(u_flat.astype(np.float32, copy=False)).view(N, m)
+        )
+        self._x0_buf.copy_(
+            torch.from_numpy(x0.astype(np.float32, copy=False))
+        )
 
-        # Rollout
-        traj = self._rollout_torch(x0_t, u_t)  # (N+1, state_dim)
+        # Create a leaf tensor for autograd (clone breaks the shared-memory
+        # link to _u_buf so that backward() can populate .grad cleanly).
+        u_t: torch.Tensor = self._u_buf.clone().requires_grad_(True)
+        x0_t: torch.Tensor = self._x0_buf  # no grad needed for state
 
-        # Stage costs
-        e = traj[:-1] - self.x_ref_t  # (N, state_dim) error
-        stage = (e @ self.Q * e).sum() + (u_t @ self.R * u_t).sum()
+        # Rollout through PINN
+        traj: torch.Tensor = self._rollout_torch(x0_t, u_t)  # (N+1, state_dim)
 
-        # Terminal cost
-        e_T = traj[-1] - self.x_ref_t
-        terminal = (e_T @ self.P * e_T).sum()
+        # Stage costs: Σ e_k' Q e_k + u_k' R u_k
+        e: torch.Tensor = traj[:-1] - self.x_ref_t  # (N, state_dim)
+        stage: torch.Tensor = (e @ self.Q * e).sum() + (u_t @ self.R * u_t).sum()
 
-        cost = stage + terminal
+        # Terminal cost: e_N' P e_N
+        e_T: torch.Tensor = traj[-1] - self.x_ref_t
+        terminal: torch.Tensor = (e_T @ self.P * e_T).sum()
+
+        cost: torch.Tensor = stage + terminal
         cost.backward()
 
-        grad = u_t.grad.detach().numpy().flatten().astype(np.float64)
+        # Transfer gradient to CPU as float64 NumPy — safe for any device.
+        grad: np.ndarray = (
+            u_t.grad.detach().cpu().numpy().flatten().astype(np.float64)
+        )
         return float(cost.item()), grad
 
     def solve(self, x0: np.ndarray) -> tuple[np.ndarray, dict]:
@@ -211,9 +250,8 @@ class PINNMPC:
         """
         N, m = self.config.horizon, self.control_dim
 
-        # Warm start
+        # Warm start: shift previous solution, repeat last action.
         if self.config.warm_start and self._u_prev is not None:
-            # Shift previous solution and repeat last action
             u0 = np.concatenate([
                 self._u_prev[m:],
                 self._u_prev[-m:]
@@ -241,16 +279,48 @@ class PINNMPC:
         self.solve_times.append(t_elapsed)
         self.n_iterations.append(result.nit)
 
-        u_opt_flat = result.x
+        if not result.success:
+            warnings.warn(
+                f"PINNMPC solver did not converge: '{result.message}'. "
+                "Applying zero-order hold (warm-start / zero fallback).",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
+        u_opt_flat: np.ndarray = result.x
         self._u_prev = u_opt_flat.copy()
 
-        u_opt = u_opt_flat[:m]
+        u_opt: np.ndarray = u_opt_flat[:m]
 
-        # Clip to bounds
+        # ── Bounds enforcement ───────────────────────────────────────────────
         if self.config.u_min is not None:
+            # Detect and warn about significant bound violations from the solver.
+            violation = float(
+                max(
+                    np.max(self.config.u_min - u_opt),
+                    np.max(u_opt - self.config.u_max),
+                    0.0,
+                )
+            )
+            if violation > 1e-4:
+                warnings.warn(
+                    f"PINNMPC: control bound violation of {violation:.2e} detected "
+                    "after optimisation (expected < 1e-4 for SLSQP with Bounds). "
+                    "Clipping to feasible range.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
             u_opt = np.clip(u_opt, self.config.u_min, self.config.u_max)
 
-        info = {
+            # Hard assertion: post-clip u_opt must be strictly feasible.
+            assert np.all(u_opt >= self.config.u_min) and np.all(
+                u_opt <= self.config.u_max
+            ), (
+                f"Control bounds assertion failed after clipping: "
+                f"u_opt={u_opt}, u_min={self.config.u_min}, u_max={self.config.u_max}"
+            )
+
+        info: dict = {
             "cost": result.fun,
             "success": result.success,
             "n_iter": result.nit,
@@ -299,17 +369,13 @@ class PINNMPC:
             t_k = k * dt
             t_log[k] = t_k
 
-            # Update reference if time-varying
             if x_ref_traj is not None:
                 self.set_reference(x_ref_traj[k])
 
-            # Add measurement noise
             x_meas = x + np.random.normal(0, noise_std, n) if noise_std > 0 else x
 
-            # Solve MPC
             u_opt, info = self.solve(x_meas)
 
-            # Apply control to real system
             sim = system.simulate(
                 x0=x,
                 u_traj=u_opt[np.newaxis, :],
