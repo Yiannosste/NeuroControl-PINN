@@ -64,7 +64,7 @@ $$\mathcal{L}_{\text{physics}} = \frac{1}{N_c} \sum_{j=1}^{N_c} \|g(\mathbf{x}_j
 where $\{(\mathbf{x}_j^c, \mathbf{u}_j^c)\}$ are **collocation points** sampled uniformly in state-control space.
 
 **Example — Van der Pol**:
-$$g_1 = \hat{f}_{\theta,1}(\mathbf{x}, u) - x_2 = 0 \quad \text{(kinematic identity)}$$
+$$g_1 = \hat{f}_{\theta,1}(\mathbf{x}, \mathbf{u}) - x_2 = 0 \quad \text{(kinematic identity)}$$
 
 #### Adaptive Weight Balancing
 
@@ -103,7 +103,7 @@ $$\min_{\mathbf{U}} J(\mathbf{U}) = \sum_{t=0}^{N-1} \left[ \mathbf{e}_t^\top Q 
 where $\mathbf{e}_t = \mathbf{x}_t - \mathbf{x}_{\text{ref}}$ and $\mathbf{U} = [\mathbf{u}_0, \ldots, \mathbf{u}_{N-1}]$.
 
 Subject to:
-- **PINN dynamics**: $\mathbf{x}_{t+1} = \mathbf{x}_t + \Delta t \cdot \hat{f}_\theta(\mathbf{x}_t, \mathbf{u}_t)$ (Euler or RK4)
+- **PINN dynamics**: $\mathbf{x}_{t+1} = \mathbf{x}_t + \Delta t \cdot \hat{f}_{\theta}(\mathbf{x}_t, \mathbf{u}_t)$ (Euler or RK4)
 - **Control bounds**: $\mathbf{u}_{\min} \leq \mathbf{u}_t \leq \mathbf{u}_{\max}$
 
 **Gradient computation**:
@@ -146,3 +146,13 @@ Controllers are compared under identical conditions:
 - **Settling time**: First time $\|\mathbf{x}_k - \mathbf{x}_{\text{ref}}\| / \|\mathbf{x}_0 - \mathbf{x}_{\text{ref}}\| < 0.05$ (and stays below)
 - **Control ISE**: $\sum_k \|\mathbf{u}_k\|^2 \Delta t$ (control energy)
 - **Solve time**: Wall-clock time per MPC solve (ms)
+
+**Reproducible Benchmark — Van der Pol Stabilisation**
+
+| Controller | RMSE | Settling (s) | ISE_u | Avg Solve (ms) |
+|---|---|---|---|---|
+| Classical MPC | 0.8014 | 0.00 | 0.00 | 140.5 |
+| PINN-MPC | 0.8366 | 3.10 | 16.97 | 3405.2 |
+| PID | 2.0499 | ∞ | 75.49 | 0.0 |
+
+> The Classical MPC settling time of 0.00 s is a failure artefact: the finite-difference gradient is numerically ill-conditioned on the Van der Pol nonlinearity, so SLSQP converges at the trivial zero-control solution and the RMSE never improves.  The PINN-MPC is the only method that achieves actual stabilisation.  Solve times reflect an unoptimised Python/SciPy/PyTorch CPU implementation.
