@@ -243,6 +243,7 @@ class ClassicalMPC:
 
         for k in range(n_steps):
             t_k = k * dt
+            t_log[k] = t_k
             if x_ref_traj is not None:
                 self.set_reference(x_ref_traj[k])
 

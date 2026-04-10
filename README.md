@@ -223,13 +223,6 @@ Gradients $\partial J / \partial \mathbf{u}$ are computed exactly via PyTorch au
 | **PINN-MPC** | **0.8366** | **3.10** | **16.97** | 3405.2 |
 | PID | 2.0499 | ∞ | 75.49 | 0.0 |
 
-> **Important interpretation of these results:**
->
-> Despite the Classical MPC having a settling time of 0.00 s, this is a measurement artefact from solver failure — the Classical MPC's finite-difference gradient is numerically inaccurate on the highly nonlinear Van der Pol dynamics, causing SLSQP to converge immediately to the trivial zero-control solution. The trajectory does not actually stabilise; the RMSE of 0.8014 confirms this.
->
-> **The PINN-MPC is the only controller in this comparison that successfully drives the system to the origin** (RMSE 0.8366, settling at 3.10 s), demonstrating that the learned surrogate captures the nonlinear dynamics accurately enough for real closed-loop stabilisation.
->
-> The PINN-MPC solve time of ~3405 ms reflects an **unoptimised Python/PyTorch implementation running on a single CPU core**. This is a mathematical proof-of-concept that validates the surrogate model's dynamics. See the [Future Work](#future-work-achieving-real-time-inference--50ms) section below for the engineering roadmap to reach real-time performance.
 
 ---
 
