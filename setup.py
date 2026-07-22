@@ -5,6 +5,7 @@ setup(
     version="1.0.0",
     description="Physics-Informed Neural Network Surrogate for Nonlinear MPC",
     author="Yiannosste",
+    license="MIT",
     packages=find_packages(exclude=["tests*", "notebooks*", "experiments*"]),
     python_requires=">=3.10",
     install_requires=[

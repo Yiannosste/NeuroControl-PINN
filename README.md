@@ -65,7 +65,7 @@ The key idea is simple yet powerful: **replace the expensive or unavailable anal
 - Deep-ensemble module for uncertainty quantification (`src/models/ensemble.py`) — implemented and unit-tested, **not yet wired into the MPC loop**; see [Future Work](#future-work-achieving-real-time-inference--50ms)
 
 ### Physics-Informed Training
-- **Composite loss** $\mathcal{L} = \lambda_d \mathcal{L}_{\text{data}} + \lambda_p \mathcal{L}_{\text{physics}}$ with adaptive NTK-inspired weight balancing ([Wang et al., 2021](https://epubs.siam.org/doi/10.1137/20M1318043))
+- **Composite loss** `L = λ_d·L_data + λ_p·L_physics` with adaptive NTK-inspired weight balancing ([Wang et al., 2021](https://epubs.siam.org/doi/10.1137/20M1318043))
 - **Two-phase optimiser**: Adam for fast convergence → L-BFGS for fine-tuning (standard PINN strategy from [Raissi et al., 2019](https://www.sciencedirect.com/science/article/pii/S0021999118307125))
 - **Randomised collocation resampling** every epoch in state-control space (uniform sampling, not importance/adaptive sampling)
 - The physics residual enforces only the **exact kinematic identities** that hold regardless of unknown physical parameters (e.g. "velocity is the derivative of position") — see [Method Details](#method-details) — not the full, uncertain governing equations
@@ -131,7 +131,11 @@ NeuroControl-PINN/
 │   ├── test_control.py
 │   └── test_physics.py
 │
+├── docs/
+│   └── methodology.md            # Full technical writeup
+│
 ├── requirements.txt
+├── setup.py
 └── README.md
 ```
 
@@ -194,15 +198,15 @@ Open notebooks in order: `01_system_analysis` → `02_pinn_training` → `03_mpc
 
 ### Physics-Informed Loss
 
-For a system $\dot{\mathbf{x}} = f(\mathbf{x}, \mathbf{u})$, the PINN is trained with:
+For a system `ẋ = f(x, u)`, the PINN is trained with:
 
 $$
 \mathcal{L} = \underbrace{\frac{\lambda_d}{N} \sum_{i=1}^{N} \|\hat{f}(\mathbf{x}_i, \mathbf{u}_i) - \dot{\mathbf{x}}_i\|^2}_{\text{Data loss}} + \underbrace{\frac{\lambda_p}{N_c} \sum_{j=1}^{N_c} \|\mathcal{R}(\mathbf{x}_j^c, \mathbf{u}_j^c)\|^2}_{\text{Physics residual}}
 $$
 
-$\mathcal{R}$ enforces only the sub-relation that is *exactly* known regardless of any uncertain physical parameter — e.g. for Van der Pol, $\hat{f}_1(\mathbf{x}, u) - x_2 = 0$ (position's derivative is velocity), leaving the nonlinear, parameter-dependent term $\mu(1-x_1^2)x_2 - x_1 + u$ to be learned purely from data. Cart-Pole gets the analogous pair of kinematic identities; the CSTR has no such identity between its two states (concentration and temperature), so it trains fully data-driven. See `src/training/physics.py` and [`docs/methodology.md`](docs/methodology.md#3-physics-informed-loss) for the full derivation, including how the residual correctly accounts for the normalised training space.
+`R` enforces only the sub-relation that is *exactly* known regardless of any uncertain physical parameter — e.g. for Van der Pol, `f̂₁(x, u) − x₂ = 0` (position's derivative is velocity), leaving the nonlinear, parameter-dependent term `μ(1−x₁²)x₂ − x₁ + u` to be learned purely from data. Cart-Pole gets the analogous pair of kinematic identities; the CSTR has no such identity between its two states (concentration and temperature), so it trains fully data-driven. See `src/training/physics.py` and [`docs/methodology.md`](docs/methodology.md#3-physics-informed-loss) for the full derivation, including how the residual correctly accounts for the normalised training space.
 
-The weights $\lambda_d, \lambda_p$ are **adaptively rebalanced** every 100 steps to equalise gradient magnitudes:
+The weights `λ_d`, `λ_p` are **adaptively rebalanced** every 100 steps to equalise gradient magnitudes:
 
 $$
 \lambda_k \leftarrow \alpha \lambda_k + (1 - \alpha) \frac{\bar{\sigma}}{\|\nabla_\theta \mathcal{L}_k\|_2}
@@ -214,9 +218,9 @@ The PINN-MPC solves a quadratic-cost nonlinear programme at each timestep:
 
 $$\min_{\mathbf{u}_{0:N-1}} \sum_{t=0}^{N-1} \left[ \mathbf{e}_t^\top Q \mathbf{e}_t + \mathbf{u}_t^\top R \mathbf{u}_t \right] + \mathbf{e}_N^\top P \mathbf{e}_N$$
 
-subject to $\mathbf{x}_{t+1} = \mathbf{x}_t + \Delta t \cdot \hat{f}(\mathbf{x}_t, \mathbf{u}_t)$ (RK4).
+subject to `x_{t+1} = x_t + Δt · f̂(x_t, u_t)` (RK4).
 
-Gradients $\partial J / \partial \mathbf{u}$ are computed exactly via PyTorch autograd through the unrolled PINN rollout, enabling efficient SLSQP optimisation.
+Gradients `∂J/∂u` are computed exactly via PyTorch autograd through the unrolled PINN rollout, enabling efficient SLSQP optimisation.
 
 ---
 
@@ -232,17 +236,9 @@ Gradients $\partial J / \partial \mathbf{u}$ are computed exactly via PyTorch au
 
 Reproduce with `python experiments/benchmark.py --system van_der_pol`. RMSE/Settling/ISE_u are exactly reproducible run-to-run (the closed-loop measurement noise is seeded via `closed_loop.seed` in `experiments/configs/van_der_pol.yaml`); solve time is wall-clock and varies with machine load, hence the range.
 
-> **On RMSE vs. settling time.** RMSE is computed over the *entire* 10 s trajectory, including the transient from $x_0=[2,0]$ down to the reference. With both MPC controllers settling around 3 s, that transient dominates the RMSE figure even though the post-settling error is small — a low settling time does not imply a near-zero RMSE. Read the two metrics together, not in isolation.
->
-> **Historical note.** Earlier documentation reported Classical MPC RMSE = 0.0125 alongside the *same* settling time (3.15 s) and ISE_u (15.37) shown in an earlier draft of this table. That RMSE figure was never actually reproducible: independent reruns of this exact benchmark — across multiple sessions and after the `dt = 0` logging bug in `classical_mpc.py` was fixed — consistently measure RMSE ≈ 0.70 for Classical MPC, which is the value now shown above. A settling time of ~3 s over a 10 s, x₀=[2,0]→0 trajectory is mathematically inconsistent with an RMSE as low as 0.0125, which is the tell that the old figure was an error rather than a measurement. The benchmark is now seeded and reproducible, so this shouldn't recur.
->
-> **The core result of this project:** Classical MPC (perfect model) and PINN-MPC (trained only on noisy trajectory data, with no access to the analytical equations) perform almost identically — RMSE within 1.4% of each other, and PINN-MPC actually settles slightly faster in this run (2.65 s vs 2.95 s). The PINN surrogate, trained with the physics-informed kinematic-identity constraint described in [Method Details](#method-details), closely tracks the oracle's control policy despite never seeing the governing equations.
->
-> PINN-MPC's solve time is ~7–9× slower than Classical MPC's — a property of this **unoptimised Python/PyTorch CPU implementation**, not an inherent limitation of the approach. See [Future Work](#future-work-achieving-real-time-inference--50ms) for the engineering roadmap to sub-50 ms inference.
-
 ### Cart-Pole and CSTR
 
-Both systems train and run end-to-end through the full pipeline (`train_pinn.py` → `run_mpc.py`/`benchmark.py`) and are covered by the same physics-informed and reproducibility infrastructure described above — Cart-Pole gets the analogous kinematic-identity physics loss (test R² = 0.9998). Both were verified with real, seeded closed-loop runs of all three controllers (Classical MPC, PINN-MPC, PID), producing finite, exactly reproducible metrics across repeated runs. They're used here as end-to-end confirmation that the pipeline generalises beyond Van der Pol, rather than as a second headline benchmark.
+Both systems train and run end-to-end through the full pipeline (`train_pinn.py` → `run_mpc.py`/`benchmark.py`) and are covered by the same physics-informed and reproducibility infrastructure described above — Cart-Pole gets the analogous kinematic-identity physics loss (test R² = 0.9998). Both were verified with real, seeded closed-loop runs of all three controllers (Classical MPC, PINN-MPC, PID), producing finite metrics with no solver failures. Cart-Pole's results were confirmed exactly reproducible on a repeat run; CSTR's PINN-MPC solve is slow enough (tens of minutes per benchmark) that a repeat wasn't run, though it uses the same seeding mechanism verified elsewhere. They're used here as end-to-end confirmation that the pipeline generalises beyond Van der Pol, rather than as a second headline benchmark.
 
 ### Effect of the Physics Loss (ablation, `notebooks/02_pinn_training.ipynb`)
 
@@ -252,7 +248,7 @@ Both systems train and run end-to-end through the full pipeline (`train_pinn.py`
 | Low Physics | 0.05 | 0.0506 | 0.9970 |
 | High Physics | 1.00 | 0.0460 | 0.9976 |
 
-Increasing the physics-loss weight monotonically improves surrogate accuracy on held-out data (≈19% RMSE reduction from no physics to the strongest constraint), even though the constrained sub-relation ($\dot x_1 = x_2$) is only part of the dynamics — enforcing it still regularises the shared hidden representation for the harder, unconstrained output.
+Increasing the physics-loss weight monotonically improves surrogate accuracy on held-out data (≈19% RMSE reduction from no physics to the strongest constraint), even though the constrained sub-relation (`ẋ₁ = x₂`) is only part of the dynamics — enforcing it still regularises the shared hidden representation for the harder, unconstrained output.
 
 ---
 
@@ -307,7 +303,7 @@ This project implements ideas from the intersection of:
 
 - Wang, S., Teng, Y., & Perdikaris, P. (2021). *Understanding and mitigating gradient flow pathologies in physics-informed neural networks.* SIAM Journal on Scientific Computing, 43(5).
 
-- Camacho, E.F., & Alba, C.B. (2013). *Model Predictive Control.* Springer.
+- Camacho, E.F., & Bordons, C. (2007). *Model Predictive Control.* Springer.
 
 - Lakshminarayanan, B., et al. (2017). *Simple and scalable predictive uncertainty estimation using deep ensembles.* NeurIPS.
 

@@ -21,7 +21,7 @@ The optimisation uses scipy.optimize.minimize with the SLSQP method,
 exploiting gradients computed through PyTorch autograd.
 
 References:
-    Camacho, E. F., & Alba, C. B. (2013). Model predictive control.
+    Camacho, E. F., & Bordons, C. (2007). Model predictive control.
     Springer Science & Business Media.
 
     Chen, W. H., et al. (2012). Disturbance-observer-based control and
