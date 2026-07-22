@@ -58,6 +58,7 @@ closed_loop:
   x0: [0.0, 0.0, 0.15, 0.0]  # small angle perturbation
   x_ref: [0.0, 0.0, 0.0, 0.0]
   noise_std: 0.01
+  seed: 123                  # seeds measurement noise for reproducible benchmarks
 
 pid:
   Kp: 50.0

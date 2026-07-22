@@ -79,6 +79,15 @@ class TestPINNMPC:
         assert len(ctrl.solve_times) == 3
         assert all(t > 0 for t in ctrl.solve_times)
 
+    def test_rollout_substeps_shape_and_finite(self):
+        cfg_fine = MPCConfig(**{**self.mpc_cfg.__dict__, "rollout_substeps": 4})
+        ctrl = PINNMPC(self.model, cfg_fine, x_ref=np.zeros(2))
+        x0 = torch.zeros(2)
+        u_seq = torch.zeros(cfg_fine.horizon, 1)
+        traj = ctrl._rollout_torch(x0, u_seq)
+        assert traj.shape == (cfg_fine.horizon + 1, 2)
+        assert torch.isfinite(traj).all()
+
 
 class TestClassicalMPC:
     def setup_method(self):
@@ -100,6 +109,31 @@ class TestClassicalMPC:
         result = ctrl.run_closed_loop(self.system, np.array([1.0, 0.0]), n_steps=5)
         assert result["x"].shape == (6, 2)
         assert result["u"].shape == (5, 1)
+
+    def test_rollout_substeps_default_matches_single_step(self):
+        """Default rollout_substeps=1 must reproduce the un-subdivided RK4 rollout."""
+        system, cfg = make_vdp_and_mpc_config()
+        assert cfg.rollout_substeps == 1
+        ctrl = ClassicalMPC(system, cfg, x_ref=np.zeros(2))
+        u_flat = np.full(cfg.horizon * system.control_dim, 0.3)
+        traj = ctrl._rollout(np.array([1.0, 0.0]), u_flat)
+        assert traj.shape == (cfg.horizon + 1, 2)
+        assert np.all(np.isfinite(traj))
+
+    def test_rollout_substeps_finer_stays_close(self):
+        """More substeps should converge to a similar (not wildly different)
+        trajectory for a well-behaved (non-stiff) system."""
+        system, cfg = make_vdp_and_mpc_config()
+        u_flat = np.full(cfg.horizon * system.control_dim, 0.3)
+
+        ctrl_coarse = ClassicalMPC(system, cfg, x_ref=np.zeros(2))
+        traj_coarse = ctrl_coarse._rollout(np.array([1.0, 0.0]), u_flat)
+
+        cfg_fine = MPCConfig(**{**cfg.__dict__, "rollout_substeps": 10})
+        ctrl_fine = ClassicalMPC(system, cfg_fine, x_ref=np.zeros(2))
+        traj_fine = ctrl_fine._rollout(np.array([1.0, 0.0]), u_flat)
+
+        assert np.allclose(traj_coarse, traj_fine, atol=1e-2)
 
 
 class TestPIDController:

@@ -137,8 +137,19 @@ class PINN(nn.Module):
             # Project to first hidden dim
             self.input_proj = nn.Linear(embed_dim, config.hidden_dims[0])
             blocks = []
+            projections = []
+            prev_dim = config.hidden_dims[0]
             for d in config.hidden_dims:
+                # A ResidualBlock adds its input back to its output, so the
+                # incoming tensor must already be at width `d`. Project
+                # between blocks whenever hidden_dims changes width (e.g.
+                # a [128, 128, 64] taper) — Identity when the width repeats.
+                projections.append(
+                    nn.Linear(prev_dim, d) if d != prev_dim else nn.Identity()
+                )
                 blocks.append(ResidualBlock(d, ActClass(), config.dropout))
+                prev_dim = d
+            self.block_projections = nn.ModuleList(projections)
             self.blocks = nn.ModuleList(blocks)
             out_in = config.hidden_dims[-1]
         else:
@@ -189,8 +200,8 @@ class PINN(nn.Module):
 
         if self.config.use_residual:
             h = self.input_proj(inp)
-            for block in self.blocks:
-                h = block(h)
+            for proj, block in zip(self.block_projections, self.blocks):
+                h = block(proj(h))
         else:
             h = self.net(inp)
 

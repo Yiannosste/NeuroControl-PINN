@@ -16,6 +16,10 @@ import sys
 import numpy as np
 import yaml
 
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.systems import VanDerPolSystem, CartPoleSystem, CSTRSystem
@@ -26,7 +30,7 @@ from src.utils.metrics import compute_metrics
 
 
 def load_config(path: str) -> dict:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -55,6 +59,7 @@ def build_mpc_config(cfg: dict, system) -> MPCConfig:
         horizon=mc.get("horizon", 15),
         dt=mc.get("dt", 0.05),
         integration=mc.get("integration", "rk4"),
+        rollout_substeps=mc.get("rollout_substeps", 1),
         Q=Q, R=R, P=P,
         u_min=u_min, u_max=u_max,
         warm_start=mc.get("warm_start", True),
@@ -88,11 +93,18 @@ def main():
     x_ref = np.array(clc["x_ref"])
     n_steps = clc.get("n_steps", 150)
     noise_std = clc.get("noise_std", 0.0)
+    # Closed-loop measurement noise is unseeded by default, which makes the
+    # benchmark non-reproducible run-to-run. Seeding here — and re-seeding to
+    # the same value before every controller below — makes results
+    # reproducible AND ensures all controllers face identical noise draws,
+    # which is what a fair side-by-side comparison requires.
+    closed_loop_seed = clc.get("seed", 123)
 
     results = []
 
     # ── 1. Classical MPC (oracle) ─────────────────────────────────────────────
     print("\n[1/3] Classical MPC (perfect model)...")
+    np.random.seed(closed_loop_seed)
     classical = ClassicalMPC(system, mpc_cfg, x_ref=x_ref)
     res_classical = classical.run_closed_loop(system, x0, n_steps, noise_std)
     results.append(res_classical)
@@ -101,6 +113,7 @@ def main():
     model_path = args.model or os.path.join(out_dir, "pinn_model.pt")
     if os.path.exists(model_path):
         print("\n[2/3] PINN-MPC...")
+        np.random.seed(closed_loop_seed)
         model = PINN.load(model_path)
         model.eval()
         pinn_mpc = PINNMPC(model, mpc_cfg, x_ref=x_ref)
@@ -128,6 +141,7 @@ def main():
         )
         x_ref_traj = np.tile(x_ref, (n_steps, 1))
         print("\n[3/3] PID...")
+        np.random.seed(closed_loop_seed)
         res_pid = pid.run_closed_loop(system, x0, n_steps, noise_std, x_ref_traj)
         results.append(res_pid)
 

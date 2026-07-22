@@ -16,6 +16,10 @@ import sys
 import numpy as np
 import yaml
 
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.systems import VanDerPolSystem, CartPoleSystem, CSTRSystem
@@ -26,7 +30,7 @@ from src.utils.metrics import compute_metrics
 
 
 def load_config(path: str) -> dict:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -60,6 +64,7 @@ def build_mpc_config(cfg: dict, system) -> MPCConfig:
         horizon=mc.get("horizon", 15),
         dt=mc.get("dt", 0.05),
         integration=mc.get("integration", "rk4"),
+        rollout_substeps=mc.get("rollout_substeps", 1),
         Q=Q, R=R, P=P,
         u_min=u_min_arr,
         u_max=u_max_arr,
@@ -118,6 +123,10 @@ def main():
     print(f"  x0  = {x0}")
     print(f"  ref = {x_ref}")
     print(f"  steps = {n_steps}, noise_std = {noise_std:.4f}")
+
+    # Seed measurement noise so a rerun of this exact command reproduces
+    # the same trajectory/metrics (see closed_loop.seed in the config).
+    np.random.seed(clc.get("seed", 123))
 
     result = controller.run_closed_loop(
         system=system,

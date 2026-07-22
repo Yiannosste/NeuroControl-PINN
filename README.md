@@ -59,15 +59,16 @@ The key idea is simple yet powerful: **replace the expensive or unavailable anal
 ## Key Features
 
 ### PINN Architecture
-- Flexible MLP with **residual skip connections** and **Xavier initialisation**
+- Flexible MLP with **residual skip connections** (width-changing tapers are handled via inserted linear projections) and **Xavier initialisation**
 - Optional **Fourier Feature Embedding** for improved spectral bias mitigation ([Tancik et al., 2020](https://arxiv.org/abs/2006.10739))
 - **Learnable output scaling** for normalisation-aware predictions
-- Support for **ensemble uncertainty quantification**
+- Deep-ensemble module for uncertainty quantification (`src/models/ensemble.py`) — implemented and unit-tested, **not yet wired into the MPC loop**; see [Future Work](#future-work-achieving-real-time-inference--50ms)
 
 ### Physics-Informed Training
 - **Composite loss** $\mathcal{L} = \lambda_d \mathcal{L}_{\text{data}} + \lambda_p \mathcal{L}_{\text{physics}}$ with adaptive NTK-inspired weight balancing ([Wang et al., 2021](https://epubs.siam.org/doi/10.1137/20M1318043))
 - **Two-phase optimiser**: Adam for fast convergence → L-BFGS for fine-tuning (standard PINN strategy from [Raissi et al., 2019](https://www.sciencedirect.com/science/article/pii/S0021999118307125))
-- **Adaptive collocation sampling** in state-control space
+- **Randomised collocation resampling** every epoch in state-control space (uniform sampling, not importance/adaptive sampling)
+- The physics residual enforces only the **exact kinematic identities** that hold regardless of unknown physical parameters (e.g. "velocity is the derivative of position") — see [Method Details](#method-details) — not the full, uncertain governing equations
 - Early stopping with best-model checkpointing
 
 ### PINN-MPC
@@ -97,7 +98,8 @@ NeuroControl-PINN/
 │   │
 │   ├── training/                 # Training pipeline
 │   │   ├── losses.py             # DataLoss, PhysicsResidualLoss, PINNLoss
-│   │   └── trainer.py            # PINNTrainer (Adam → L-BFGS)
+│   │   ├── trainer.py            # PINNTrainer (Adam → L-BFGS)
+│   │   └── physics.py            # Per-system physics_fn (kinematic-identity residuals)
 │   │
 │   ├── control/                  # Controllers
 │   │   ├── pinn_mpc.py           # PINN-MPC (SLSQP + autograd gradients)
@@ -126,7 +128,8 @@ NeuroControl-PINN/
 ├── tests/
 │   ├── test_systems.py
 │   ├── test_models.py
-│   └── test_control.py
+│   ├── test_control.py
+│   └── test_physics.py
 │
 ├── requirements.txt
 └── README.md
@@ -193,13 +196,17 @@ Open notebooks in order: `01_system_analysis` → `02_pinn_training` → `03_mpc
 
 For a system $\dot{\mathbf{x}} = f(\mathbf{x}, \mathbf{u})$, the PINN is trained with:
 
-$$\mathcal{L} = \underbrace{\frac{\lambda_d}{N} \sum_{i=1}^{N} \|\hat{f}(\mathbf{x}_i, \mathbf{u}_i) - \dot{\mathbf{x}}_i\|^2}_{\text{Data loss}} + \underbrace{\frac{\lambda_p}{N_c} \sum_{j=1}^{N_c} \|\mathcal{R}(\mathbf{x}_j^c, \mathbf{u}_j^c)\|^2}_{\text{Physics residual}}$$
+$$
+\mathcal{L} = \underbrace{\frac{\lambda_d}{N} \sum_{i=1}^{N} \|\hat{f}(\mathbf{x}_i, \mathbf{u}_i) - \dot{\mathbf{x}}_i\|^2}_{\text{Data loss}} + \underbrace{\frac{\lambda_p}{N_c} \sum_{j=1}^{N_c} \|\mathcal{R}(\mathbf{x}_j^c, \mathbf{u}_j^c)\|^2}_{\text{Physics residual}}
+$$
 
-where $\mathcal{R}$ enforces known structural constraints (e.g., for Van der Pol: $\hat{f}_1(\mathbf{x}, u) - x_2 = 0$).
+$\mathcal{R}$ enforces only the sub-relation that is *exactly* known regardless of any uncertain physical parameter — e.g. for Van der Pol, $\hat{f}_1(\mathbf{x}, u) - x_2 = 0$ (position's derivative is velocity), leaving the nonlinear, parameter-dependent term $\mu(1-x_1^2)x_2 - x_1 + u$ to be learned purely from data. Cart-Pole gets the analogous pair of kinematic identities; the CSTR has no such identity between its two states (concentration and temperature), so it trains fully data-driven. See `src/training/physics.py` and [`docs/methodology.md`](docs/methodology.md#3-physics-informed-loss) for the full derivation, including how the residual correctly accounts for the normalised training space.
 
 The weights $\lambda_d, \lambda_p$ are **adaptively rebalanced** every 100 steps to equalise gradient magnitudes:
 
-$$\lambda_k \leftarrow \alpha \lambda_k + (1 - \alpha) \frac{\bar{\sigma}}{\|\nabla_\theta \mathcal{L}_k\|_2}$$
+$$
+\lambda_k \leftarrow \alpha \lambda_k + (1 - \alpha) \frac{\bar{\sigma}}{\|\nabla_\theta \mathcal{L}_k\|_2}
+$$
 
 ### MPC Formulation
 
@@ -215,21 +222,37 @@ Gradients $\partial J / \partial \mathbf{u}$ are computed exactly via PyTorch au
 
 ## Benchmark Results
 
-### Van der Pol Stabilisation (x₀ = [2.0, 0.0] → origin)
+### Van der Pol Stabilisation (x₀ = [2.0, 0.0] → origin, 200 steps, Δt = 0.05 s, measurement noise σ = 0.02)
 
 | Controller | RMSE | Settling (s) | ISE_u | Avg Solve (ms) |
 |---|---|---|---|---|
-| Classical MPC | 0.0125 | 3.15 | 15.37 | 233.3 |
-| PINN-MPC | 0.8366 | 3.10 | 16.97 | 2923.4 |
-| PID | 2.0499 | ∞ | 75.49 | 0.0 |
+| Classical MPC | 0.6956 | 2.95 | 15.77 | ~250–435 |
+| PINN-MPC | 0.7054 | 2.65 | 19.31 | ~1800–2300 |
+| PID | 1.0099 | 9.85 | 75.37 | 0.0 |
 
-> **Note on historical benchmarks and the `dt = 0` data-logging bug.**
+Reproduce with `python experiments/benchmark.py --system van_der_pol`. RMSE/Settling/ISE_u are exactly reproducible run-to-run (the closed-loop measurement noise is seeded via `closed_loop.seed` in `experiments/configs/van_der_pol.yaml`); solve time is wall-clock and varies with machine load, hence the range.
+
+> **On RMSE vs. settling time.** RMSE is computed over the *entire* 10 s trajectory, including the transient from $x_0=[2,0]$ down to the reference. With both MPC controllers settling around 3 s, that transient dominates the RMSE figure even though the post-settling error is small — a low settling time does not imply a near-zero RMSE. Read the two metrics together, not in isolation.
 >
-> Earlier versions of this repository reported Classical MPC results of RMSE = 0.8014, Settling = 0.00 s, and ISE_u = 0.00. Those figures were artefacts of a defect in `classical_mpc.py` where the time array `t_log` was never written inside the closed-loop body — every timestep was recorded at `t = 0`, collapsing all time-integral metrics to zero and producing misleading trajectory plots. Once this bug was corrected, the Classical MPC performs exactly as control theory predicts for a perfect-model oracle.
+> **Historical note.** Earlier documentation reported Classical MPC RMSE = 0.0125 alongside the *same* settling time (3.15 s) and ISE_u (15.37) shown in an earlier draft of this table. That RMSE figure was never actually reproducible: independent reruns of this exact benchmark — across multiple sessions and after the `dt = 0` logging bug in `classical_mpc.py` was fixed — consistently measure RMSE ≈ 0.70 for Classical MPC, which is the value now shown above. A settling time of ~3 s over a 10 s, x₀=[2,0]→0 trajectory is mathematically inconsistent with an RMSE as low as 0.0125, which is the tell that the old figure was an error rather than a measurement. The benchmark is now seeded and reproducible, so this shouldn't recur.
 >
-> **The core result of this project:** The Classical MPC serves as a mathematically optimal Oracle, settling the Van der Pol oscillator to the origin in 3.15 s (RMSE = 0.0125). The **PINN-MPC, trained exclusively on noisy trajectory data with no access to the analytical equations, closely approximates this Oracle**: it achieves a settling time of 3.10 s (within 1.6 % of the Oracle) while incurring a modest increase in RMSE (0.8366 vs 0.0125) that reflects the residual approximation error of the surrogate dynamics model.
+> **The core result of this project:** Classical MPC (perfect model) and PINN-MPC (trained only on noisy trajectory data, with no access to the analytical equations) perform almost identically — RMSE within 1.4% of each other, and PINN-MPC actually settles slightly faster in this run (2.65 s vs 2.95 s). The PINN surrogate, trained with the physics-informed kinematic-identity constraint described in [Method Details](#method-details), closely tracks the oracle's control policy despite never seeing the governing equations.
 >
-> The PINN-MPC solve time of ~2923 ms is a characteristic of the **unoptimised Python/PyTorch CPU implementation** used here as a mathematical proof-of-concept, not an inherent limitation of the approach. See the [Future Work](#future-work-achieving-real-time-inference--50ms) section for the engineering roadmap to sub-50 ms inference.
+> PINN-MPC's solve time is ~7–9× slower than Classical MPC's — a property of this **unoptimised Python/PyTorch CPU implementation**, not an inherent limitation of the approach. See [Future Work](#future-work-achieving-real-time-inference--50ms) for the engineering roadmap to sub-50 ms inference.
+
+### Cart-Pole and CSTR
+
+Both systems train and run end-to-end through the full pipeline (`train_pinn.py` → `run_mpc.py`/`benchmark.py`) and are covered by the same physics-informed and reproducibility infrastructure described above — Cart-Pole gets the analogous kinematic-identity physics loss (test R² = 0.9998). Both were verified with real, seeded closed-loop runs of all three controllers (Classical MPC, PINN-MPC, PID), producing finite, exactly reproducible metrics across repeated runs. They're used here as end-to-end confirmation that the pipeline generalises beyond Van der Pol, rather than as a second headline benchmark.
+
+### Effect of the Physics Loss (ablation, `notebooks/02_pinn_training.ipynb`)
+
+| Variant | λ_phys | Test RMSE (normalised) | R² |
+|---|---|---|---|
+| No Physics | 0.00 | 0.0566 | 0.9961 |
+| Low Physics | 0.05 | 0.0506 | 0.9970 |
+| High Physics | 1.00 | 0.0460 | 0.9976 |
+
+Increasing the physics-loss weight monotonically improves surrogate accuracy on held-out data (≈19% RMSE reduction from no physics to the strongest constraint), even though the constrained sub-relation ($\dot x_1 = x_2$) is only part of the dynamics — enforcing it still regularises the shared hidden representation for the harder, unconstrained output.
 
 ---
 

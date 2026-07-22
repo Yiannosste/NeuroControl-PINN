@@ -123,6 +123,18 @@ class TestPINN:
             out = m(x, u)
             assert torch.isfinite(out).all()
 
+    def test_residual_variable_width(self):
+        """Residual blocks must handle a tapering hidden_dims (e.g. cartpole.yaml's
+        [128, 128, 64]) where consecutive block widths differ."""
+        cfg = PINNConfig(state_dim=4, control_dim=1,
+                         hidden_dims=[128, 128, 64], use_residual=True)
+        m = PINN(cfg)
+        x = torch.randn(8, 4)
+        u = torch.randn(8, 1)
+        out = m(x, u)
+        assert out.shape == (8, 4)
+        assert torch.isfinite(out).all()
+
 
 class TestEnsemblePINN:
     def setup_method(self):

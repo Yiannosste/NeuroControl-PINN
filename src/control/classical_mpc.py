@@ -70,8 +70,19 @@ class ClassicalMPC:
         self.x_ref = np.array(x_ref)
 
     def _rollout(self, x0: np.ndarray, u_flat: np.ndarray) -> np.ndarray:
-        """Simulate the true system over the horizon using RK4."""
+        """
+        Simulate the true system over the horizon using RK4.
+
+        `rollout_substeps` subdivides each control interval `dt` into smaller
+        RK4 steps of size `dt / rollout_substeps`. A single full-size RK4 step
+        is unconditionally unstable for stiff dynamics (e.g. the CSTR's
+        Arrhenius kinetics near an ignition transient) regardless of which
+        control the optimiser is evaluating, which corrupts every cost
+        evaluation with inf/NaN rather than reflecting a bad control choice.
+        """
         N, m, dt = self.config.horizon, self.control_dim, self.config.dt
+        n_sub = max(1, self.config.rollout_substeps)
+        h = dt / n_sub
         u_seq = u_flat.reshape(N, m)
         traj = np.zeros((N + 1, self.state_dim))
         traj[0] = x0
@@ -79,11 +90,13 @@ class ClassicalMPC:
         for k in range(N):
             x_k = traj[k]
             u_k = u_seq[k]
-            k1 = self.system.dynamics(0.0, x_k, u_k)
-            k2 = self.system.dynamics(0.0, x_k + 0.5 * dt * k1, u_k)
-            k3 = self.system.dynamics(0.0, x_k + 0.5 * dt * k2, u_k)
-            k4 = self.system.dynamics(0.0, x_k + dt * k3, u_k)
-            traj[k + 1] = x_k + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+            for _ in range(n_sub):
+                k1 = self.system.dynamics(0.0, x_k, u_k)
+                k2 = self.system.dynamics(0.0, x_k + 0.5 * h * k1, u_k)
+                k3 = self.system.dynamics(0.0, x_k + 0.5 * h * k2, u_k)
+                k4 = self.system.dynamics(0.0, x_k + h * k3, u_k)
+                x_k = x_k + (h / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+            traj[k + 1] = x_k
 
         return traj
 

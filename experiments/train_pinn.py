@@ -17,11 +17,16 @@ import numpy as np
 import torch
 import yaml
 
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.systems import VanDerPolSystem, CartPoleSystem, CSTRSystem
 from src.models import PINN, PINNConfig
 from src.training import PINNTrainer, TrainingConfig, PINNLoss
+from src.training.physics import PHYSICS_FN_FACTORY
 from src.utils import (
     generate_dataset,
     split_dataset,
@@ -45,7 +50,7 @@ CONFIG_MAP = {
 
 
 def load_config(path: str) -> dict:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -158,9 +163,17 @@ def main():
 
     # ── Loss function ─────────────────────────────────────────────────────────
     tc = cfg["training"]
+    physics_fn_factory = PHYSICS_FN_FACTORY.get(args.system)
+    physics_fn = physics_fn_factory(normalizer) if physics_fn_factory else None
+    if physics_fn is None:
+        print(
+            f"  Note: no lossless structural constraint is registered for "
+            f"'{args.system}'; training is purely data-driven (lambda_phys is ignored)."
+        )
     loss_fn = PINNLoss(
         lambda_data=tc.get("lambda_data", 1.0),
         lambda_phys=tc.get("lambda_phys", 0.1),
+        physics_fn=physics_fn,
         adaptive=tc.get("adaptive_weights", True),
     )
 

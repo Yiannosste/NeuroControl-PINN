@@ -55,6 +55,7 @@ closed_loop:
   x0: [2.0, 0.0]
   x_ref: [0.0, 0.0]
   noise_std: 0.02
+  seed: 123                  # seeds measurement noise for reproducible benchmarks
 
 pid:
   # Gains tuned for the Van der Pol oscillator (μ=1, u_max=5).

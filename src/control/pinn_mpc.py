@@ -46,6 +46,8 @@ class MPCConfig:
     horizon: int = 15          # prediction horizon N
     dt: float = 0.05           # time step (s)
     integration: str = "rk4"  # 'euler' or 'rk4'
+    rollout_substeps: int = 1  # RK4/Euler substeps per dt — raise for stiff systems
+                               # where a single step of size dt is unstable (e.g. CSTR)
 
     # Stage cost weights
     Q: Optional[np.ndarray] = None  # state error weight (state_dim, state_dim)
@@ -161,23 +163,25 @@ class PINNMPC:
             Trajectory tensor (N+1, state_dim) on self._device.
         """
         N = self.config.horizon
-        dt = self.config.dt
+        n_sub = max(1, self.config.rollout_substeps)
+        h = self.config.dt / n_sub
         traj = [x0.unsqueeze(0)]  # (1, state_dim)
         x = x0
 
         for k in range(N):
             u_k = u_seq[k].unsqueeze(0)   # (1, control_dim)
-            x_batch = x.unsqueeze(0)       # (1, state_dim)
 
-            if self.config.integration == "euler":
-                dxdt = self.model(x_batch, u_k).squeeze(0)
-                x = x + dt * dxdt
-            else:  # rk4
-                k1 = self.model(x_batch, u_k).squeeze(0)
-                k2 = self.model((x + 0.5 * dt * k1).unsqueeze(0), u_k).squeeze(0)
-                k3 = self.model((x + 0.5 * dt * k2).unsqueeze(0), u_k).squeeze(0)
-                k4 = self.model((x + dt * k3).unsqueeze(0), u_k).squeeze(0)
-                x = x + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
+            for _ in range(n_sub):
+                x_batch = x.unsqueeze(0)   # (1, state_dim)
+                if self.config.integration == "euler":
+                    dxdt = self.model(x_batch, u_k).squeeze(0)
+                    x = x + h * dxdt
+                else:  # rk4
+                    k1 = self.model(x_batch, u_k).squeeze(0)
+                    k2 = self.model((x + 0.5 * h * k1).unsqueeze(0), u_k).squeeze(0)
+                    k3 = self.model((x + 0.5 * h * k2).unsqueeze(0), u_k).squeeze(0)
+                    k4 = self.model((x + h * k3).unsqueeze(0), u_k).squeeze(0)
+                    x = x + (h / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4)
 
             traj.append(x.unsqueeze(0))
 
