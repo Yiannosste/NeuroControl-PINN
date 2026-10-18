@@ -1,4 +1,4 @@
-# ─── Cart-Pole (Inverted Pendulum) — Experiment Configuration ────────────────
+# ─── Cart-Pole (Inverted Pendulum): Experiment Configuration ────────────────
 system:
   name: CartPole
   M: 1.0          # cart mass (kg)

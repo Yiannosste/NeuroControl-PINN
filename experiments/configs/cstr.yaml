@@ -1,4 +1,4 @@
-# ─── CSTR Reactor — Experiment Configuration ──────────────────────────────────
+# ─── CSTR Reactor: Experiment Configuration ──────────────────────────────────
 system:
   name: CSTR
 
@@ -45,7 +45,7 @@ mpc:
                              # which control the optimiser is evaluating, corrupting
                              # every cost evaluation with inf/NaN.
   rollout_substeps: 50      # subdivides each dt into 50 RK4 steps (effective step
-                             # 0.001 hr) — matches a reference adaptive stiff-solver
+                             # 0.001 hr). This matches a reference adaptive stiff-solver
                              # (Radau) integration of the true ignition transient.
   integration: rk4
   Q: [100.0, 0.01]          # penalise CA deviation most
