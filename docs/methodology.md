@@ -13,7 +13,7 @@ $$
 We observe **noisy trajectory data**:
 
 $$
-\mathcal{D} = \{(\mathbf{x}_i, \mathbf{u}_i, \dot{\mathbf{x}}_i)\}_{i=1}^N
+\mathcal{D} = \lbrace (\mathbf{x}_i, \mathbf{u}_i, \dot{\mathbf{x}}_i)\rbrace_{i=1}^N
 $$
 
 Each `x_i` is a sensor reading with additive Gaussian noise, `x_i = x_i^true + ε_i` with `ε_i ~ N(0, σ²I)`. The derivative target `ẋ_i` is computed analytically along the clean trajectory during data generation. This matches a common experimental setup: noisy state measurements, with derivatives coming from a higher-fidelity process (such as a state estimator) rather than raw finite differences.
@@ -147,7 +147,7 @@ Subject to:
 **Warm starting**: the shifted previous solution
 
 $$
-\mathbf{U}^{(k+1)}_0 = [\mathbf{u}_1^*, \ldots, \mathbf{u}_{N-1}^*, \mathbf{u}_{N-1}^*]
+\mathbf{U}^{(k+1)}_0 = [\mathbf{u}_1^{\ast}, \ldots, \mathbf{u}_{N-1}^{\ast}, \mathbf{u}_{N-1}^{\ast}]
 $$
 
 initialises the next MPC solve. This reduces the number of SLSQP iterations.
