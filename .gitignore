@@ -52,3 +52,7 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Keep the README diagram sources
+!docs/*.png
+!docs/*.svg

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="660" viewBox="0 0 1200 660" font-family="Inter, 'DejaVu Sans', sans-serif">
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#111827"/></marker></defs>
+<rect width="1200" height="660" fill="white"/>
+<rect x="40" y="80" width="300" height="150" rx="10" fill="#E7F5EC" stroke="#1F7A3F" stroke-width="2"/>
+<text x="190.0" y="108" text-anchor="middle" font-weight="700" font-size="17" fill="#111827">Noisy trajectory data</text>
+<text x="190.0" y="139" text-anchor="middle" font-size="14.5" font-weight="400" fill="#4B5563">D = {(x<tspan baseline-shift="sub" font-size="72%">i</tspan>, u<tspan baseline-shift="sub" font-size="72%">i</tspan>, ẋ<tspan baseline-shift="sub" font-size="72%">i</tspan>)}</text>
+<text x="190.0" y="160" text-anchor="middle" font-size="14.5" font-weight="400" fill="#4B5563">states x<tspan baseline-shift="sub" font-size="72%">i</tspan> with sensor noise,</text>
+<text x="190.0" y="181" text-anchor="middle" font-size="14.5" font-weight="400" fill="#4B5563">controls u<tspan baseline-shift="sub" font-size="72%">i</tspan>, derivatives ẋ<tspan baseline-shift="sub" font-size="72%">i</tspan></text>
+<rect x="400" y="80" width="370" height="150" rx="10" fill="#E8F0FE" stroke="#1D4ED8" stroke-width="2"/>
+<text x="585.0" y="108" text-anchor="middle" font-weight="700" font-size="17" fill="#111827">PINN training</text>
+<text x="585.0" y="139" text-anchor="middle" font-size="13.5" font-weight="400" fill="#4B5563">L = λ<tspan baseline-shift="sub" font-size="72%">d</tspan> · L<tspan baseline-shift="sub" font-size="72%">data</tspan> + λ<tspan baseline-shift="sub" font-size="72%">p</tspan> · L<tspan baseline-shift="sub" font-size="72%">physics</tspan></text>
+<text x="585.0" y="160" text-anchor="middle" font-size="13.5" font-weight="400" fill="#4B5563">L<tspan baseline-shift="sub" font-size="72%">physics</tspan>: exact kinematic identities only (e.g. ẋ<tspan baseline-shift="sub" font-size="72%">1</tspan> = x<tspan baseline-shift="sub" font-size="72%">2</tspan>)</text>
+<text x="585.0" y="181" text-anchor="middle" font-size="13.5" font-weight="400" fill="#4B5563">Adam, then L-BFGS · adaptive λ rebalancing</text>
+<rect x="830" y="80" width="330" height="150" rx="10" fill="#E8F0FE" stroke="#1D4ED8" stroke-width="2"/>
+<text x="995.0" y="108" text-anchor="middle" font-weight="700" font-size="17" fill="#111827">PINN surrogate f̂<tspan baseline-shift="sub" font-size="72%">θ</tspan>(x, u) ≈ f(x, u)</text>
+<text x="995.0" y="139" text-anchor="middle" font-size="14.5" font-weight="400" fill="#4B5563">MLP with residual blocks,</text>
+<text x="995.0" y="160" text-anchor="middle" font-size="14.5" font-weight="400" fill="#4B5563">optional Fourier features,</text>
+<text x="995.0" y="181" text-anchor="middle" font-size="14.5" font-weight="400" fill="#4B5563">learnable output scaling</text>
+<path d="M 340,155 L 398,155" fill="none" stroke="#111827" stroke-width="2.2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<path d="M 770,155 L 828,155" fill="none" stroke="#111827" stroke-width="2.2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<path d="M 995,230 L 995,275 L 300,275 L 300,328" fill="none" stroke="#111827" stroke-width="2.2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="501.7" y="256.5" width="276.6" height="21.5" rx="4" fill="white" fill-opacity="0.92"/>
+<text x="640" y="269" text-anchor="middle" font-size="13.5" font-weight="500" fill="#111827" font-style="italic">f̂<tspan baseline-shift="sub" font-size="72%">θ</tspan> is the forward model inside MPC</text>
+<rect x="40" y="330" width="500" height="190" rx="10" fill="#FFF1E6" stroke="#C2410C" stroke-width="2"/>
+<text x="290.0" y="358" text-anchor="middle" font-weight="700" font-size="17" fill="#111827">PINN-MPC (receding horizon)</text>
+<text x="290.0" y="389" text-anchor="middle" font-size="13.5" font-weight="400" fill="#4B5563">min Σ<tspan baseline-shift="sub" font-size="72%">t=0</tspan><tspan baseline-shift="super" font-size="72%">N−1</tspan> [ e<tspan baseline-shift="sub" font-size="72%">t</tspan><tspan baseline-shift="super" font-size="72%">T</tspan> Q e<tspan baseline-shift="sub" font-size="72%">t</tspan> + u<tspan baseline-shift="sub" font-size="72%">t</tspan><tspan baseline-shift="super" font-size="72%">T</tspan> R u<tspan baseline-shift="sub" font-size="72%">t</tspan> ] + e<tspan baseline-shift="sub" font-size="72%">N</tspan><tspan baseline-shift="super" font-size="72%">T</tspan> P e<tspan baseline-shift="sub" font-size="72%">N</tspan>,   e<tspan baseline-shift="sub" font-size="72%">t</tspan> = x<tspan baseline-shift="sub" font-size="72%">t</tspan> − x<tspan baseline-shift="sub" font-size="72%">ref</tspan></text>
+<text x="290.0" y="410" text-anchor="middle" font-size="13.5" font-weight="400" fill="#4B5563">s.t.  x<tspan baseline-shift="sub" font-size="72%">t+1</tspan> = x<tspan baseline-shift="sub" font-size="72%">t</tspan> + Δt · f̂<tspan baseline-shift="sub" font-size="72%">θ</tspan>(x<tspan baseline-shift="sub" font-size="72%">t</tspan>, u<tspan baseline-shift="sub" font-size="72%">t</tspan>)   (RK4 rollout)</text>
+<text x="290.0" y="431" text-anchor="middle" font-size="13.5" font-weight="400" fill="#4B5563">      u<tspan baseline-shift="sub" font-size="72%">min</tspan> ≤ u<tspan baseline-shift="sub" font-size="72%">t</tspan> ≤ u<tspan baseline-shift="sub" font-size="72%">max</tspan></text>
+<text x="290.0" y="452" text-anchor="middle" font-size="13.5" font-weight="400" fill="#4B5563">SLSQP · exact gradients via autograd · warm start</text>
+<rect x="700" y="350" width="460" height="150" rx="10" fill="#F3F4F6" stroke="#374151" stroke-width="2"/>
+<text x="930.0" y="378" text-anchor="middle" font-weight="700" font-size="17" fill="#111827">Plant (true system)</text>
+<text x="930.0" y="409" text-anchor="middle" font-size="14.5" font-weight="400" fill="#4B5563">Van der Pol oscillator · Cart-Pole · CSTR reactor</text>
+<text x="930.0" y="430" text-anchor="middle" font-size="14.5" font-weight="400" fill="#4B5563">simulated with the true equations,</text>
+<text x="930.0" y="451" text-anchor="middle" font-size="14.5" font-weight="400" fill="#4B5563">states measured with additive noise</text>
+<path d="M 540,400 L 698,400" fill="none" stroke="#111827" stroke-width="2.2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="542.18" y="374.5" width="155.64000000000001" height="21.5" rx="4" fill="white" fill-opacity="0.92"/>
+<text x="620" y="387" text-anchor="middle" font-size="13.5" font-weight="500" fill="#111827" font-style="italic">u<tspan baseline-shift="sub" font-size="72%">0</tspan><tspan baseline-shift="super" font-size="72%">*</tspan> (first control)</text>
+<path d="M 700,455 L 542,455" fill="none" stroke="#111827" stroke-width="2.2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<rect x="549.74" y="466.5" width="140.52" height="21.5" rx="4" fill="white" fill-opacity="0.92"/>
+<text x="620" y="479" text-anchor="middle" font-size="13.5" font-weight="500" fill="#111827" font-style="italic">measured state x<tspan baseline-shift="sub" font-size="72%">k</tspan></text>
+<rect x="40" y="570" width="1120" height="70" rx="10" fill="#FEF9E7" stroke="#A16207" stroke-width="2"/>
+<text x="600.0" y="598" text-anchor="middle" font-weight="700" font-size="15.5" fill="#111827">Benchmark on identical closed-loop runs (same x<tspan baseline-shift="sub" font-size="72%">0</tspan>, reference, noise seed, Q, R, P, horizon)</text>
+<text x="600.0" y="626" text-anchor="middle" font-size="13.5" font-weight="400" fill="#4B5563">PINN-MPC  vs  Classical MPC (oracle, true equations)  vs  PID  ·  metrics: RMSE, settling time, ISE<tspan baseline-shift="sub" font-size="72%">u</tspan>, solve time</text>
+<path d="M 300,520 L 300,568" fill="none" stroke="#111827" stroke-width="2.2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+<path d="M 930,500 L 930,568" fill="none" stroke="#111827" stroke-width="2.2" marker-end="url(#arrow)" stroke-linejoin="round"/>
+</svg>
