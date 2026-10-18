@@ -63,26 +63,26 @@ def plot_training_history(
     adam_mask = phases == "adam"
     lbfgs_mask = phases == "lbfgs"
 
-    # Panel 1 — Total loss
+    # Panel 1: Total loss
     ax = axes[0]
     if adam_mask.any():
         ax.semilogy(epochs[adam_mask], total[adam_mask],
-                    color="#2196F3", label="Adam — Total")
+                    color="#2196F3", label="Adam: Total")
         ax.semilogy(epochs[adam_mask], data_loss[adam_mask],
-                    color="#2196F3", ls="--", alpha=0.6, label="Adam — Data")
+                    color="#2196F3", ls="--", alpha=0.6, label="Adam: Data")
         ax.semilogy(epochs[adam_mask], phys_loss[adam_mask] + 1e-16,
-                    color="#2196F3", ls=":", alpha=0.6, label="Adam — Physics")
+                    color="#2196F3", ls=":", alpha=0.6, label="Adam: Physics")
     if lbfgs_mask.any():
         offset = epochs[adam_mask].max() if adam_mask.any() else 0
         ax.semilogy(epochs[lbfgs_mask] + offset, total[lbfgs_mask],
-                    color="#FF5722", label="L-BFGS — Total")
+                    color="#FF5722", label="L-BFGS: Total")
     ax.set_xlabel("Epoch")
     ax.set_ylabel("Loss")
     ax.set_title("Training Loss")
     ax.legend(fontsize=9)
     ax.grid(True, which="both", alpha=0.3)
 
-    # Panel 2 — Validation
+    # Panel 2: Validation
     ax = axes[1]
     val = [v for v in history["val_total"] if v is not None]
     if val:
@@ -170,7 +170,7 @@ def plot_phase_portrait(
     ax.set_ylim(x_min[1], x_max[1])
     ax.set_xlabel(system.state_labels[0])
     ax.set_ylabel(system.state_labels[1])
-    ax.set_title(title or f"Phase Portrait — {system.name}")
+    ax.set_title(title or f"Phase Portrait: {system.name}")
     ax.legend(loc="upper right")
     ax.grid(True, alpha=0.2)
 
@@ -227,7 +227,7 @@ def plot_closed_loop(
         ax.grid(True, alpha=0.3)
 
     axes[-1].set_xlabel("Time (s)")
-    fig.suptitle(title or f"Closed-Loop — {controller} — {system.name}", fontweight="bold")
+    fig.suptitle(title or f"Closed-Loop: {controller} ({system.name})", fontweight="bold")
     _save_or_show(fig, save_path)
 
 
@@ -291,7 +291,7 @@ def plot_benchmark_comparison(
 
     axes[0].legend(handles=legend_handles, loc="upper right")
     fig.suptitle(
-        title or f"Controller Comparison — {system.name}",
+        title or f"Controller Comparison: {system.name}",
         fontweight="bold",
     )
     _save_or_show(fig, save_path)
@@ -344,5 +344,5 @@ def plot_pinn_predictions(
         ax.legend(fontsize=9)
         ax.grid(True, alpha=0.3)
 
-    fig.suptitle(f"PINN Prediction Accuracy — {system.name}", fontweight="bold")
+    fig.suptitle(f"PINN Prediction Accuracy: {system.name}", fontweight="bold")
     _save_or_show(fig, save_path)

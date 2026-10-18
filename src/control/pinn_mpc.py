@@ -25,7 +25,7 @@ References:
     Springer Science & Business Media.
 
     Chen, W. H., et al. (2012). Disturbance-observer-based control and
-    related methods—An overview. IEEE TIE.
+    related methods: An overview. IEEE TIE.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ class MPCConfig:
     horizon: int = 15          # prediction horizon N
     dt: float = 0.05           # time step (s)
     integration: str = "rk4"  # 'euler' or 'rk4'
-    rollout_substeps: int = 1  # RK4/Euler substeps per dt — raise for stiff systems
+    rollout_substeps: int = 1  # RK4/Euler substeps per dt. Raise for stiff systems
                                # where a single step of size dt is unstable (e.g. CSTR)
 
     # Stage cost weights
@@ -98,7 +98,7 @@ class PINNMPC:
         self.state_dim: int = model.state_dim
         self.control_dim: int = model.control_dim
 
-        # Infer device from model parameters — works for CPU and any CUDA device.
+        # Infer device from model parameters. Works for CPU and any CUDA device.
         self._device: torch.device = next(model.parameters()).device
 
         # Reference state
@@ -106,7 +106,7 @@ class PINNMPC:
             np.zeros(self.state_dim) if x_ref is None else np.array(x_ref, dtype=np.float64)
         )
 
-        # Cost matrices — constructed once and kept on the target device.
+        # Cost matrices, constructed once and kept on the target device.
         cfg = config
         Q = cfg.Q if cfg.Q is not None else np.eye(self.state_dim)
         R = cfg.R if cfg.R is not None else 0.01 * np.eye(self.control_dim)
@@ -235,7 +235,7 @@ class PINNMPC:
         cost: torch.Tensor = stage + terminal
         cost.backward()
 
-        # Transfer gradient to CPU as float64 NumPy — safe for any device.
+        # Transfer gradient to CPU as float64 NumPy, safe for any device.
         grad: np.ndarray = (
             u_t.grad.detach().cpu().numpy().flatten().astype(np.float64)
         )

@@ -1,5 +1,5 @@
 """
-PID Controller — baseline comparator.
+PID Controller: baseline comparator.
 
 A standard Proportional-Integral-Derivative controller.
 Included as a simple classical baseline to highlight the advantages

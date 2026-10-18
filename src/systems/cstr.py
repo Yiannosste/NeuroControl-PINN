@@ -1,5 +1,5 @@
 """
-Continuous Stirred Tank Reactor (CSTR) — Exothermic First-Order Reaction.
+Continuous Stirred Tank Reactor (CSTR): Exothermic First-Order Reaction.
 
 A → B  (irreversible, exothermic)
 
@@ -44,7 +44,7 @@ class CSTRSystem(DynamicalSystem):
         # neg_dH / (rho * Cp) has units of K·L/mol (combined parameter)
         self.neg_dH_over_rho_Cp = 209.2    # K·L/mol   (-ΔH / ρCp)
         # UA / (rho * Cp * V) has units of 1/hr (cooling coefficient)
-        self.UA_over_rho_Cp_V = 0.083      # hr^-1·K^-1 — moderate cooling
+        self.UA_over_rho_Cp_V = 0.083      # hr^-1·K^-1, moderate cooling
 
         # Process parameters
         self.V = 100.0          # reactor volume (L)

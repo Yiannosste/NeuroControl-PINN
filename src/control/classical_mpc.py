@@ -1,7 +1,7 @@
 """
 Classical MPC with perfect model knowledge.
 
-Uses the true system equations as the forward model — this is the
+Uses the true system equations as the forward model. This is the
 upper bound on achievable control performance (oracle / ground-truth MPC).
 
 Comparing PINN-MPC against this baseline quantifies the degradation

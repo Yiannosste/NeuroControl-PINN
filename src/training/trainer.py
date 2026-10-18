@@ -1,10 +1,10 @@
 """
 PINN Trainer with Adam + L-BFGS two-phase training strategy.
 
-Phase 1 — Adam:  Fast exploration of the loss landscape. Adam is robust
+Phase 1 (Adam):  Fast exploration of the loss landscape. Adam is robust
                  to noise in the gradients, converges quickly to a good basin.
 
-Phase 2 — L-BFGS: Fine-tuning with second-order information. L-BFGS
+Phase 2 (L-BFGS): Fine-tuning with second-order information. L-BFGS
                    can achieve much lower loss values than Adam for PINN-type
                    objectives (smooth, low-noise).
 
@@ -208,7 +208,7 @@ class PINNTrainer:
             u_bounds = (u_min, u_max)
 
         print("=" * 60)
-        print(f"  PINN Training — {self.model}")
+        print(f"  PINN Training: {self.model}")
         print(f"  Train samples: {len(x_train):,} | Batch size: {self.config.batch_size}")
         print(f"  Adam epochs: {self.config.adam_epochs} | L-BFGS epochs: {self.config.lbfgs_epochs}")
         print("=" * 60)

@@ -143,7 +143,7 @@ class PINN(nn.Module):
                 # A ResidualBlock adds its input back to its output, so the
                 # incoming tensor must already be at width `d`. Project
                 # between blocks whenever hidden_dims changes width (e.g.
-                # a [128, 128, 64] taper) — Identity when the width repeats.
+                # a [128, 128, 64] taper), Identity when the width repeats.
                 projections.append(
                     nn.Linear(prev_dim, d) if d != prev_dim else nn.Identity()
                 )
@@ -253,8 +253,8 @@ class PINN(nn.Module):
 
         Returns:
             dxdt: (batch, state_dim)
-            J_x:  (batch, state_dim, state_dim)  — Jacobian wrt x
-            J_u:  (batch, state_dim, control_dim) — Jacobian wrt u
+            J_x:  (batch, state_dim, state_dim), Jacobian wrt x
+            J_u:  (batch, state_dim, control_dim), Jacobian wrt u
         """
         x = x.requires_grad_(True)
         u = u.requires_grad_(True)

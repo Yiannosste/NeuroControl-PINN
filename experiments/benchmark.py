@@ -1,5 +1,5 @@
 """
-Experiment 3 — Controller Benchmark Comparison.
+Experiment 3: Controller Benchmark Comparison.
 
 Runs PINN-MPC, Classical MPC (oracle), and PID on the same closed-loop
 problem and produces a comprehensive comparison table + figure.
@@ -94,8 +94,8 @@ def main():
     n_steps = clc.get("n_steps", 150)
     noise_std = clc.get("noise_std", 0.0)
     # Closed-loop measurement noise is unseeded by default, which makes the
-    # benchmark non-reproducible run-to-run. Seeding here — and re-seeding to
-    # the same value before every controller below — makes results
+    # benchmark non-reproducible run-to-run. Seeding here (and re-seeding to
+    # the same value before every controller below) makes results
     # reproducible AND ensures all controllers face identical noise draws,
     # which is what a fair side-by-side comparison requires.
     closed_loop_seed = clc.get("seed", 123)
@@ -120,7 +120,7 @@ def main():
         res_pinn = pinn_mpc.run_closed_loop(system, x0, n_steps, noise_std)
         results.append(res_pinn)
     else:
-        print(f"\n[2/3] Skipping PINN-MPC — model not found at {model_path}")
+        print(f"\n[2/3] Skipping PINN-MPC: model not found at {model_path}")
 
     # ── 3. PID ────────────────────────────────────────────────────────────────
     if not args.skip_pid:
@@ -176,7 +176,7 @@ def main():
         results,
         system,
         x_ref=x_ref,
-        title=f"Controller Benchmark — {system.name}",
+        title=f"Controller Benchmark: {system.name}",
         save_path=os.path.join(out_dir, "benchmark_comparison.png"),
     )
 

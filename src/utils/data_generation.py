@@ -103,7 +103,7 @@ def split_dataset(
     Randomly split a dataset into train / validation / test sets.
 
     Returns:
-        (train_data, val_data, test_data) — each a dict with same keys.
+        (train_data, val_data, test_data), each a dict with same keys.
     """
     N = len(data["t"])
     rng = np.random.RandomState(seed)

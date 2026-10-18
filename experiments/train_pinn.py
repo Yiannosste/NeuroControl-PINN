@@ -1,5 +1,5 @@
 """
-Experiment 1 — PINN Training.
+Experiment 1: PINN Training.
 
 Trains a Physics-Informed Neural Network on trajectory data from a
 specified dynamical system.
@@ -199,7 +199,7 @@ def main():
     # ── Plots ─────────────────────────────────────────────────────────────────
     plot_training_history(
         history,
-        title=f"PINN Training — {system.name}",
+        title=f"PINN Training: {system.name}",
         save_path=os.path.join(out_dir, "training_history.png"),
     )
 

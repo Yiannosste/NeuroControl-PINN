@@ -1,5 +1,5 @@
 """
-Experiment 2 — Closed-Loop MPC Control.
+Experiment 2: Closed-Loop MPC Control.
 
 Loads a pre-trained PINN and runs closed-loop MPC on the specified system.
 Saves state/control trajectories and plots.
@@ -161,7 +161,7 @@ def main():
         result,
         system,
         x_ref=x_ref,
-        title=f"PINN-MPC — {system.name}",
+        title=f"PINN-MPC: {system.name}",
         save_path=os.path.join(out_dir, "mpc_closed_loop.png"),
     )
 

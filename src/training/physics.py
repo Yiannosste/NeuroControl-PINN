@@ -9,14 +9,14 @@ Design principle
 We only enforce constraints that are *exactly* known regardless of the
 uncertain physical parameters the PINN is meant to learn. For every system
 here that means the kinematic identity between a position-like state and
-its own time derivative (velocity) — e.g. dp/dt = p_dot. This holds by
+its own time derivative (velocity), e.g. dp/dt = p_dot. This holds by
 definition of what a "position" and "velocity" state are, independent of
 mass, length, friction, or any other unknown parameter.
 
 Components of the dynamics that *do* depend on the uncertain physical
 parameters (the nonlinear restoring/damping term in Van der Pol, the
 pendulum's torque balance in Cart-Pole, the Arrhenius reaction rate in the
-CSTR) are deliberately left unconstrained — enforcing them would mean
+CSTR) are deliberately left unconstrained. Enforcing them would mean
 hand-coding the answer the network is supposed to learn from data.
 
 Normalisation
@@ -87,7 +87,7 @@ def make_cartpole_physics_fn(normalizer: DataNormalizer) -> Callable:
 
 
 # CSTR has no algebraic/kinematic identity that holds independent of the
-# unknown reaction kinetics — both dCA/dt and dT/dt depend on the Arrhenius
+# unknown reaction kinetics. Both dCA/dt and dT/dt depend on the Arrhenius
 # rate term that the PINN is meant to learn from data. No lossless
 # structural constraint is available, so CSTR is intentionally left out of
 # this registry and trains in pure data-driven mode (lambda_phys is ignored

@@ -2,9 +2,9 @@
 Physics-Informed Loss Functions for PINN training.
 
 The total loss combines:
-1. DataLoss        — MSE between predicted dx/dt and measured/estimated derivatives.
-2. PhysicsResidualLoss — Residuals of known ODE structure at collocation points.
-3. InitialConditionLoss — Penalise deviation from observed initial conditions.
+1. DataLoss:             MSE between predicted dx/dt and measured/estimated derivatives.
+2. PhysicsResidualLoss:  Residuals of known ODE structure at collocation points.
+3. InitialConditionLoss: Penalise deviation from observed initial conditions.
 
 Adaptive loss weighting (NTK-inspired):
     Dynamically re-balances λ_data and λ_phys during training based on
