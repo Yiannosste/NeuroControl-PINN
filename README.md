@@ -13,13 +13,13 @@
 
 ## Overview
 
-**NeuroControl-PINN** bridges two powerful paradigms in modern engineering:
+**NeuroControl-PINN** combines two ideas from modern engineering:
 
-- **Physics-Informed Neural Networks (PINNs)** — deep learning models that embed physical laws directly into the training objective via automatic differentiation, enabling sample-efficient and physically consistent system identification.
+- **Physics-Informed Neural Networks (PINNs).** Deep learning models that put physical laws directly into the training loss through automatic differentiation. This makes system identification need less data and keeps the learned model physically consistent.
 
-- **Model Predictive Control (MPC)** — an optimisation-based control strategy that solves a finite-horizon optimal control problem at every timestep using a forward dynamics model.
+- **Model Predictive Control (MPC).** An optimisation-based control strategy. At every timestep it solves a finite-horizon optimal control problem using a forward model of the dynamics.
 
-The key idea is simple yet powerful: **replace the expensive or unavailable analytical model inside MPC with a PINN surrogate trained on noisy trajectory data**. The physics residuals act as regularisers, ensuring the surrogate model is physically consistent even in data-sparse regions of state space.
+The core idea is simple: **replace the expensive or unavailable analytical model inside MPC with a PINN surrogate trained on noisy trajectory data.** The physics residuals act as regularisers, so the surrogate stays physically consistent even where there is little data.
 
 ```
     Noisy Trajectories
@@ -59,24 +59,24 @@ The key idea is simple yet powerful: **replace the expensive or unavailable anal
 ## Key Features
 
 ### PINN Architecture
-- Flexible MLP with **residual skip connections** (width-changing tapers are handled via inserted linear projections) and **Xavier initialisation**
-- Optional **Fourier Feature Embedding** for improved spectral bias mitigation ([Tancik et al., 2020](https://arxiv.org/abs/2006.10739))
-- **Learnable output scaling** for normalisation-aware predictions
-- Deep-ensemble module for uncertainty quantification (`src/models/ensemble.py`) — implemented and unit-tested, **not yet wired into the MPC loop**; see [Future Work](#future-work-achieving-real-time-inference--50ms)
+- Flexible MLP with **residual skip connections** and **Xavier initialisation**. When the layer width changes, a linear projection is inserted so the skip connection still fits.
+- Optional **Fourier Feature Embedding** to reduce spectral bias ([Tancik et al., 2020](https://arxiv.org/abs/2006.10739))
+- **Learnable output scaling** so predictions respect the normalisation
+- Deep-ensemble module for uncertainty quantification (`src/models/ensemble.py`). It is implemented and unit-tested but **not yet connected to the MPC loop**. See [Future Work](#future-work-achieving-real-time-inference--50ms).
 
 ### Physics-Informed Training
-- **Composite loss** `L = λ_d·L_data + λ_p·L_physics` with adaptive NTK-inspired weight balancing ([Wang et al., 2021](https://epubs.siam.org/doi/10.1137/20M1318043))
-- **Two-phase optimiser**: Adam for fast convergence → L-BFGS for fine-tuning (standard PINN strategy from [Raissi et al., 2019](https://www.sciencedirect.com/science/article/pii/S0021999118307125))
-- **Randomised collocation resampling** every epoch in state-control space (uniform sampling, not importance/adaptive sampling)
-- The physics residual enforces only the **exact kinematic identities** that hold regardless of unknown physical parameters (e.g. "velocity is the derivative of position") — see [Method Details](#method-details) — not the full, uncertain governing equations
+- **Composite loss** `L = λ_d·L_data + λ_p·L_physics` with adaptive weight balancing inspired by NTK analysis ([Wang et al., 2021](https://epubs.siam.org/doi/10.1137/20M1318043))
+- **Two-phase optimiser**: Adam for fast convergence, then L-BFGS for fine-tuning. This is the standard PINN recipe from [Raissi et al., 2019](https://www.sciencedirect.com/science/article/pii/S0021999118307125).
+- **Randomised collocation resampling** every epoch in state-control space (uniform sampling, not importance or adaptive sampling)
+- The physics residual enforces only the **exact kinematic identities** that hold no matter what the unknown physical parameters are (for example "velocity is the derivative of position"). It does not enforce the full, uncertain governing equations. See [Method Details](#method-details).
 - Early stopping with best-model checkpointing
 
 ### PINN-MPC
 - **Single-shooting MPC** with SLSQP optimisation (scipy)
 - Gradients computed through **PyTorch autograd** (exact, not finite differences)
-- **RK4 integration** of PINN dynamics over the prediction horizon
+- **RK4 integration** of the PINN dynamics over the prediction horizon
 - **Warm starting** from the shifted previous solution
-- Real-time solve time logging and diagnostics
+- Solve time logging and diagnostics
 
 ---
 
@@ -190,7 +190,7 @@ python experiments/benchmark.py --system van_der_pol
 jupyter lab notebooks/
 ```
 
-Open notebooks in order: `01_system_analysis` → `02_pinn_training` → `03_mpc_control`
+Open the notebooks in order: `01_system_analysis`, then `02_pinn_training`, then `03_mpc_control`.
 
 ---
 
@@ -204,9 +204,9 @@ $$
 \mathcal{L} = \underbrace{\frac{\lambda_d}{N} \sum_{i=1}^{N} \|\hat{f}(\mathbf{x}_i, \mathbf{u}_i) - \dot{\mathbf{x}}_i\|^2}_{\text{Data loss}} + \underbrace{\frac{\lambda_p}{N_c} \sum_{j=1}^{N_c} \|\mathcal{R}(\mathbf{x}_j^c, \mathbf{u}_j^c)\|^2}_{\text{Physics residual}}
 $$
 
-`R` enforces only the sub-relation that is *exactly* known regardless of any uncertain physical parameter — e.g. for Van der Pol, `f̂₁(x, u) − x₂ = 0` (position's derivative is velocity), leaving the nonlinear, parameter-dependent term `μ(1−x₁²)x₂ − x₁ + u` to be learned purely from data. Cart-Pole gets the analogous pair of kinematic identities; the CSTR has no such identity between its two states (concentration and temperature), so it trains fully data-driven. See `src/training/physics.py` and [`docs/methodology.md`](docs/methodology.md#3-physics-informed-loss) for the full derivation, including how the residual correctly accounts for the normalised training space.
+`R` enforces only the part of the dynamics that is *exactly* known, whatever the uncertain physical parameters are. For Van der Pol this is `f̂₁(x, u) − x₂ = 0` (the derivative of position is velocity). The nonlinear, parameter-dependent term `μ(1−x₁²)x₂ − x₁ + u` is left for the network to learn from data. Cart-Pole gets the same kind of kinematic identities, one pair of them. The CSTR has no such identity between its two states (concentration and temperature), so it trains fully data-driven. See `src/training/physics.py` and [`docs/methodology.md`](docs/methodology.md#3-physics-informed-loss) for the full derivation, including how the residual handles the normalised training space.
 
-The weights `λ_d`, `λ_p` are **adaptively rebalanced** every 100 steps to equalise gradient magnitudes:
+The weights `λ_d`, `λ_p` are **rebalanced every 100 steps** so that both loss terms produce gradients of similar size:
 
 $$
 \lambda_k \leftarrow \alpha \lambda_k + (1 - \alpha) \frac{\bar{\sigma}}{\|\nabla_\theta \mathcal{L}_k\|_2}
@@ -214,13 +214,13 @@ $$
 
 ### MPC Formulation
 
-The PINN-MPC solves a quadratic-cost nonlinear programme at each timestep:
+At each timestep, PINN-MPC solves a nonlinear programme with a quadratic cost:
 
 $$\min_{\mathbf{u}_{0:N-1}} \sum_{t=0}^{N-1} \left[ \mathbf{e}_t^\top Q \mathbf{e}_t + \mathbf{u}_t^\top R \mathbf{u}_t \right] + \mathbf{e}_N^\top P \mathbf{e}_N$$
 
 subject to `x_{t+1} = x_t + Δt · f̂(x_t, u_t)` (RK4).
 
-Gradients `∂J/∂u` are computed exactly via PyTorch autograd through the unrolled PINN rollout, enabling efficient SLSQP optimisation.
+The gradients `∂J/∂u` come from PyTorch autograd through the unrolled PINN rollout. They are exact, which makes the SLSQP optimisation efficient.
 
 ---
 
@@ -234,11 +234,11 @@ Gradients `∂J/∂u` are computed exactly via PyTorch autograd through the unro
 | PINN-MPC | 0.7054 | 2.65 | 19.31 | ~1800–2300 |
 | PID | 1.0099 | 9.85 | 75.37 | 0.0 |
 
-Reproduce with `python experiments/benchmark.py --system van_der_pol`. RMSE/Settling/ISE_u are exactly reproducible run-to-run (the closed-loop measurement noise is seeded via `closed_loop.seed` in `experiments/configs/van_der_pol.yaml`); solve time is wall-clock and varies with machine load, hence the range.
+Reproduce with `python experiments/benchmark.py --system van_der_pol`. RMSE, settling time and ISE_u are exactly the same on every run, because the closed-loop measurement noise is seeded through `closed_loop.seed` in `experiments/configs/van_der_pol.yaml`. Solve time is wall-clock, so it changes with machine load. That is why it is given as a range.
 
 ### Cart-Pole and CSTR
 
-Both systems train and run end-to-end through the full pipeline (`train_pinn.py` → `run_mpc.py`/`benchmark.py`) and are covered by the same physics-informed and reproducibility infrastructure described above — Cart-Pole gets the analogous kinematic-identity physics loss (test R² = 0.9998). Both were verified with real, seeded closed-loop runs of all three controllers (Classical MPC, PINN-MPC, PID), producing finite metrics with no solver failures. Cart-Pole's results were confirmed exactly reproducible on a repeat run; CSTR's PINN-MPC solve is slow enough (tens of minutes per benchmark) that a repeat wasn't run, though it uses the same seeding mechanism verified elsewhere. They're used here as end-to-end confirmation that the pipeline generalises beyond Van der Pol, rather than as a second headline benchmark.
+Both systems train and run end-to-end through the full pipeline (`train_pinn.py`, then `run_mpc.py` or `benchmark.py`). They use the same physics-informed training and the same reproducibility setup described above. Cart-Pole gets its own kinematic-identity physics loss (test R² = 0.9998). Both were verified with real, seeded closed-loop runs of all three controllers (Classical MPC, PINN-MPC, PID). All metrics were finite and no solver failed. Cart-Pole's results were confirmed identical on a repeat run. CSTR's PINN-MPC solve is slow (tens of minutes per benchmark), so a repeat was not run, though it uses the same seeding that was verified elsewhere. These two systems confirm that the pipeline works beyond Van der Pol. They are not a second headline benchmark.
 
 ### Effect of the Physics Loss (ablation, `notebooks/02_pinn_training.ipynb`)
 
@@ -248,17 +248,17 @@ Both systems train and run end-to-end through the full pipeline (`train_pinn.py`
 | Low Physics | 0.05 | 0.0506 | 0.9970 |
 | High Physics | 1.00 | 0.0460 | 0.9976 |
 
-Increasing the physics-loss weight monotonically improves surrogate accuracy on held-out data (≈19% RMSE reduction from no physics to the strongest constraint), even though the constrained sub-relation (`ẋ₁ = x₂`) is only part of the dynamics — enforcing it still regularises the shared hidden representation for the harder, unconstrained output.
+Raising the physics-loss weight steadily improves accuracy on held-out data (about 19% lower RMSE from no physics to the strongest constraint). This happens even though the enforced relation (`ẋ₁ = x₂`) is only part of the dynamics. Enforcing it still regularises the shared hidden representation, which helps the harder, unconstrained output too.
 
 ---
 
 ## Future Work: Achieving Real-Time Inference (< 50ms)
 
-The current implementation demonstrates scientific correctness; closing the gap to production deployment requires the following engineering steps.
+The current implementation shows that the method is scientifically correct. Getting it ready for production needs the engineering steps below.
 
-**Step 1: Model Export (Eliminating the Python GIL)**
+**Step 1: Model Export (removing the Python GIL)**
 
-The PyTorch model must be exported using `TorchScript` (`torch.jit.script`) or `ONNX` (`torch.onnx.export`). This decouples the neural network from the Python interpreter entirely, removing the massive overhead of crossing the C++/Python boundary during the thousands of solver iterations that occur within a single MPC horizon rollout.
+Export the PyTorch model with `TorchScript` (`torch.jit.script`) or `ONNX` (`torch.onnx.export`). This separates the network from the Python interpreter and removes the cost of crossing the C++/Python boundary. That crossing happens thousands of times during the solver iterations of a single MPC horizon rollout.
 
 ```python
 # Example TorchScript export
@@ -268,32 +268,32 @@ scripted.save("pinn_surrogate.pt")
 
 **Step 2: Industrial C++ Solvers**
 
-Replace `scipy.optimize` with a compiled, industrial-grade C/C++ solver specifically designed for Nonlinear MPC. The leading options are:
+Replace `scipy.optimize` with a compiled C/C++ solver built for nonlinear MPC. The main options are:
 
-- [**Acados**](https://github.com/acados/acados) — a real-time embedded NLP solver (RTI/SQP) with code-generation, achieving sub-millisecond solve times on embedded hardware.
-- [**CasADi**](https://web.casadi.org/) — a symbolic AD framework that can code-generate efficient C for the OCP, with IPOPT or qpOASES as the inner QP solver.
+- [**Acados**](https://github.com/acados/acados): a real-time embedded NLP solver (RTI/SQP) with code generation. It reaches sub-millisecond solve times on embedded hardware.
+- [**CasADi**](https://web.casadi.org/): a symbolic AD framework that generates efficient C code for the OCP, with IPOPT or qpOASES as the inner QP solver.
 
-Both frameworks support exporting a C function from the ONNX/TorchScript model for use as the dynamics callback.
+Both can take a C function exported from the ONNX/TorchScript model as the dynamics callback.
 
-**Step 3: C++ Control Loop & Memory Management**
+**Step 3: C++ Control Loop and Memory Management**
 
-Rewrite the main MPC loop in C++. Implement strict memory pre-allocation for the state and control trajectory tensors (the `(N+1) × n` state buffer and `N × m` control buffer) to completely eliminate dynamic memory allocation and garbage-collection thrashing during the horizon rollout. In Python, even simple tensor creation inside the solve loop contributes tens of milliseconds of GC pressure per call.
+Rewrite the main MPC loop in C++. Pre-allocate the state and control trajectory buffers (the `(N+1) × n` state buffer and the `N × m` control buffer) so there is no dynamic memory allocation or garbage collection during the horizon rollout. In Python, even creating a simple tensor inside the solve loop adds tens of milliseconds of GC pressure per call.
 
 **Step 4: Edge Hardware Acceleration**
 
-Deploy the compiled ONNX/C++ architecture onto an embedded edge device with a dedicated tensor accelerator — for example the **Nvidia Jetson Orin** (up to 275 TOPS INT8) or a dedicated NPU. The dense matrix multiplications in the PINN forward pass parallelise trivially on such hardware, reducing per-evaluation latency from ~1 ms to under 100 µs, which in turn reduces the per-step solve time from seconds to milliseconds.
+Deploy the compiled ONNX/C++ stack on an embedded edge device with a tensor accelerator, for example the **Nvidia Jetson Orin** (up to 275 TOPS INT8) or a dedicated NPU. The dense matrix multiplications in the PINN forward pass parallelise easily on this hardware. Per-evaluation latency drops from about 1 ms to under 100 µs, and the per-step solve time drops from seconds to milliseconds.
 
 ---
 
 ## Scientific Background
 
-This project implements ideas from the intersection of:
+This project sits at the intersection of:
 
-1. **Physics-Informed Machine Learning** — embedding physical structure into neural networks for improved generalisation and data efficiency.
+1. **Physics-Informed Machine Learning.** Putting physical structure into neural networks for better generalisation and data efficiency.
 
-2. **Data-Driven Model Predictive Control** — learning system dynamics from data to enable model-based control without explicit analytical models.
+2. **Data-Driven Model Predictive Control.** Learning system dynamics from data so that model-based control works without an explicit analytical model.
 
-3. **Scientific Machine Learning (SciML)** — combining the expressiveness of deep learning with the inductive biases of physical laws.
+3. **Scientific Machine Learning (SciML).** Combining the expressiveness of deep learning with the inductive biases of physical laws.
 
 ### Core References
 
