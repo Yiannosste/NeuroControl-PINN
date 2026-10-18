@@ -21,28 +21,9 @@
 
 The core idea is simple: **replace the expensive or unavailable analytical model inside MPC with a PINN surrogate trained on noisy trajectory data.** The physics residuals act as regularisers, so the surrogate stays physically consistent even where there is little data.
 
-```
-    Noisy Trajectories
-    {(x_i, u_i, ẋ_i)}         ┌─────────────────────────┐
-          │                    │      PINN Training       │
-          ▼                    │  L = λ_d·L_data          │
-    ┌──────────┐               │      + λ_p·L_physics     │
-    │  PINN    │◄──────────────│  (Adam + L-BFGS)         │
-    │ f̂(x, u) │               └─────────────────────────┘
-    └──────────┘
-          │
-          ▼
-    ┌──────────────────────────────────────────────┐
-    │          PINN-MPC (Receding Horizon)          │
-    │                                              │
-    │  min Σ [e_t'Qe_t + u_t'Ru_t] + e_N'Pe_N     │
-    │  s.t. x_{t+1} = x_t + dt·f̂(x_t, u_t)       │
-    │       u_min ≤ u_t ≤ u_max                   │
-    └──────────────────────────────────────────────┘
-          │
-          ▼
-    Closed-Loop Control  →  Benchmark vs Classical MPC + PID
-```
+![NeuroControl-PINN pipeline: noisy trajectory data trains a PINN surrogate, which becomes the forward model inside a receding-horizon MPC that runs in closed loop against the true plant and is benchmarked against Classical MPC and PID](docs/pipeline.png)
+
+*Pipeline overview. Editable source: [`docs/pipeline.svg`](docs/pipeline.svg).*
 
 ---
 
